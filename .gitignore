@@ -1,0 +1,17 @@
+# IntelliJ
+.idea/
+*.iml
+
+# Java / Maven
+target/
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Frontend
+node_modules/
+dist/
+coverage/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db

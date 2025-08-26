@@ -1,0 +1,23 @@
+{
+  "generator-jhipster": {
+    "baseName": "frontend",
+    "clientFramework": "angular",
+    "clientTestFrameworks": ["cypress"],
+    "clientTheme": "none",
+    "creationTimestamp": 1756217899125,
+    "cypressAudit": true,
+    "cypressCoverage": true,
+    "enableTranslation": true,
+    "entities": [],
+    "jhipsterVersion": "8.11.0",
+    "languages": ["fr", "en"],
+    "microfrontend": null,
+    "microfrontends": [],
+    "monorepository": true,
+    "nativeLanguage": "fr",
+    "skipCommitHook": true,
+    "skipServer": true,
+    "testFrameworks": ["cypress"],
+    "withAdminUi": true
+  }
+}
