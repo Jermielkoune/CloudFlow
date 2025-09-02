@@ -48,8 +48,9 @@ stages:
           - script: |
               echo "JAVA_HOME=$JAVA_HOME"
               java -version
-              mvn -v
+              ./mvnw -v
             displayName: "Verify Java & Maven"
+            workingDirectory: backend
 
           - task: NodeTool@0
             displayName: "Use Node $(NODE_VERSION)"
