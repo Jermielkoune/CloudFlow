@@ -148,3 +148,6 @@ Procfile        text
 *.otf           binary
 *.woff          binary
 *.woff2         binary
+
+## MAVEN WRAPPER
+mvnw text eol=lf
