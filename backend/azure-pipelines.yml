@@ -4,20 +4,10 @@
 trigger:
   batch: true
   branches:
-    include:
-      - main
-      - develop
-      - "feature/*"
+    include: [main, develop, "feature/*"]
   paths:
-    include:
-      - "backend/pom.xml"
-      - "backend/src/**"
-    exclude:
-      - "docs/**"
-      - "README.md"
-      - ".github/**"
-      - ".devcontainer/**"
-      - "**/*.md"
+    include: ["backend/pom.xml", "backend/src/**"]
+    exclude: ["docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md"]
 
 # PR (GitHub): build de validation uniquement si code Java change.
 # autoCancel: true annule le run précédent si de nouveaux commits arrivent.
@@ -26,19 +16,10 @@ pr:
   autoCancel: true
   drafts: false
   branches:
-    include:
-      - main
-      - develop
+    include: [main, develop, feature/*]
   paths:
-    include:
-      - "backend/pom.xml"
-      - "backend/src/**"
-    exclude:
-      - "docs/**"
-      - "README.md"
-      - ".github/**"
-      - ".devcontainer/**"
-      - "**/*.md"
+    include: ["backend/pom.xml", "backend/src/**"]
+    exclude: ["docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md"]
 # ---------------------------------------------------------------------------
 
 
