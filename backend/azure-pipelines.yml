@@ -22,18 +22,18 @@ pr:
     exclude: ["docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md"]
 # ---------------------------------------------------------------------------
 
-# --- Skeleton pour permettre un run manuel -------------------
+# Microsoft-hosted agent (Azure Pipelines)
+pool:
+  vmImage: "ubuntu-latest"
+
 stages:
-  - stage: sanity
-    displayName: "Stage 0 — CI skeleton (no-op)"
-    jobs:
-      - job: noop
-        displayName: "No-op job"
-        pool:
-          vmImage: "ubuntu-latest"
-        steps:
-          - script: echo "Pipeline skeleton OK — triggers Stage 1 opérationnels."
-            displayName: "Echo"
+- stage: sanity
+  displayName: "Stage 0 — CI skeleton (no-op)"
+  jobs:
+  - job: noop
+    steps:
+    - script: echo "Pipeline skeleton OK — triggers Stage 1 opérationnels."
+      displayName: "Echo"
 
             
 #jobs:
