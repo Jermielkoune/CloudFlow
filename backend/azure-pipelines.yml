@@ -4,10 +4,10 @@
 trigger:
   batch: true
   branches:
-    include: [main, develop, "feature/*"]
+    include: [ main, develop, "feature/*" ]
   paths:
-    include: ["backend/pom.xml", "backend/src/**"]
-    exclude: ["docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md"]
+    include: [ "backend/pom.xml", "backend/src/**" ]
+    exclude: [ "docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md" ]
 
 # PR (GitHub): build de validation uniquement si code Java change.
 # autoCancel: true annule le run précédent si de nouveaux commits arrivent.
@@ -16,26 +16,53 @@ pr:
   autoCancel: true
   drafts: false
   branches:
-    include: [main, develop, feature/*]
+    include: [ main, develop, "feature/*" ]
   paths:
-    include: ["backend/pom.xml", "backend/src/**"]
-    exclude: ["docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md"]
+    include: [ "backend/pom.xml", "backend/src/**" ]
+    exclude: [ "docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md" ]
 # ---------------------------------------------------------------------------
 
 # Microsoft-hosted agent (Azure Pipelines)
 pool:
   vmImage: "ubuntu-latest"
 
-stages:
-- stage: sanity
-  displayName: "Stage 0 — CI skeleton (no-op)"
-  jobs:
-  - job: noop
-    steps:
-    - script: echo "Pipeline skeleton OK — triggers Stage 1 opérationnels."
-      displayName: "Echo"
+# --- Variables versions outillage ------------------------------------------
+variables:
+  JDK_VERSION: '17'
+  NODE_VERSION: '22.x'
 
-            
+stages:
+  - stage: setup_toolchain
+    displayName: "Stage 2 — Pin JDK & Node"
+    jobs:
+      - job: pin_tools
+        displayName: "Pin JDK $(JDK_VERSION) & Node $(NODE_VERSION)"
+        steps:
+          - task: JavaToolInstaller@0
+            displayName: "Set up Java $(JDK_VERSION) (x64)"
+            inputs:
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - script: |
+              echo "JAVA_HOME=$JAVA_HOME"
+              java -version
+              mvn -v
+            displayName: "Verify Java & Maven"
+
+          - task: NodeTool@0
+            displayName: "Use Node $(NODE_VERSION)"
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+
+          - script: |
+              node -v
+              npm -v
+              npm ci
+              npm run backend:info
+            displayName: "Verify Node/npm + run a script"
+            workingDirectory: backend
 #jobs:
 #  - job: Test
 #    pool:
