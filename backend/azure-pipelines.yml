@@ -153,6 +153,86 @@ stages:
               npx prettier --check "**/*.{md,json,yml,yaml}"
             displayName: 'Prettier check (md/json/yml)'
             workingDirectory: backend
+
+  # --- Stage 4: Tests unitaires & rapports -----------------------------------
+  - stage: unit_tests
+    displayName: 'Stage 4 — Tests unitaires & rapports'
+    dependsOn: deps_and_quality
+    jobs:
+      - job: run_unit_tests
+        displayName: 'Run unit tests (Surefire) + publish reports'
+        steps:
+          # 0) Pin JDK 17 (VM neuve à chaque job)
+          - task: JavaToolInstaller@0
+            displayName: 'Set up Java $(JDK_VERSION) (x64)'
+            inputs:
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          # 1) Recompute cache keys (sha du pom)
+          - script: |
+              echo "Compute cache key for Maven…"
+              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
+              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+              echo "MAVEN_CACHE_KEY=$MAVEN_KEY"
+            displayName: 'Compute Maven cache key (sha256)'
+
+          # 2) Restore Maven caches
+          - task: Cache@2
+            displayName: 'Restore Maven repo (~/.m2/repository)'
+            inputs:
+              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
+              restoreKeys: |
+                maven | $(Agent.OS)
+              path: '$(HOME)/.m2/repository'
+
+          - task: Cache@2
+            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
+            inputs:
+              key: 'maven-wrapper | $(Agent.OS)'
+              path: '$(HOME)/.m2/wrapper'
+
+          # 3) Run unit tests (Surefire) — JaCoCo report généré au phase 'test'
+          - script: |
+              ./mvnw -B -ntp clean test
+            displayName: 'Maven unit tests (Surefire)'
+            workingDirectory: backend
+
+          # 4) Publier les résultats JUnit (Surefire)
+          - task: PublishTestResults@2
+            displayName: 'Publish JUnit test results'
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'backend/target/surefire-reports/*.xml'
+              searchFolder: '$(System.DefaultWorkingDirectory)'
+              mergeTestResults: true
+              failTaskOnFailedTests: true
+              testRunTitle: 'Unit tests (Surefire)'
+
+          # 5) Publier la couverture JaCoCo (XML + HTML)
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish code coverage (JaCoCo)'
+            inputs:
+              codeCoverageTool: 'JaCoCo'
+              summaryFileLocation: 'backend/target/site/jacoco/jacoco.xml'
+              reportDirectory: 'backend/target/site/jacoco'
+              failIfCoverageEmpty: false # true si tu veux échouer sans rapport
+
+          # 6) Conserver les rapports en artefacts de pipeline
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: surefire-reports'
+            inputs:
+              targetPath: 'backend/target/surefire-reports'
+              artifact: 'unit-tests-surefire'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: jacoco-site'
+            inputs:
+              targetPath: 'backend/target/site/jacoco'
+              artifact: 'jacoco-coverage'
+              publishLocation: 'pipeline'
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
