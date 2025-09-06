@@ -4,10 +4,10 @@
 trigger:
   batch: true
   branches:
-    include: [ main, develop, "feature/*" ]
+    include: [main, develop, 'feature/*']
   paths:
-    include: [ "backend/pom.xml", "backend/src/**" ]
-    exclude: [ "docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md" ]
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
 
 # PR (GitHub): build de validation uniquement si code Java change.
 # autoCancel: true annule le run précédent si de nouveaux commits arrivent.
@@ -16,15 +16,15 @@ pr:
   autoCancel: true
   drafts: false
   branches:
-    include: [ main, develop, "feature/*" ]
+    include: [main, develop, 'feature/*']
   paths:
-    include: [ "backend/pom.xml", "backend/src/**" ]
-    exclude: [ "docs/**", "README.md", ".github/**", ".devcontainer/**", "**/*.md" ]
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
 # ---------------------------------------------------------------------------
 
 # Microsoft-hosted agent (Azure Pipelines)
 pool:
-  vmImage: "ubuntu-latest"
+  vmImage: 'ubuntu-latest'
 
 # --- Variables versions outillage ------------------------------------------
 variables:
@@ -38,13 +38,13 @@ variables:
 
 stages:
   - stage: setup_toolchain
-    displayName: "Stage 1 — Pin JDK & Node"
+    displayName: 'Stage 1 — Pin JDK & Node'
     jobs:
       - job: pin_tools
-        displayName: "Pin JDK $(JDK_VERSION) & Node $(NODE_VERSION)"
+        displayName: 'Pin JDK $(JDK_VERSION) & Node $(NODE_VERSION)'
         steps:
           - task: JavaToolInstaller@0
-            displayName: "Set up Java $(JDK_VERSION) (x64)"
+            displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
               versionSpec: '$(JDK_VERSION)'
               jdkArchitectureOption: 'x64'
@@ -54,11 +54,11 @@ stages:
               echo "JAVA_HOME=$JAVA_HOME"
               java -version
               ./mvnw -v
-            displayName: "Verify Java & Maven"
+            displayName: 'Verify Java & Maven'
             workingDirectory: backend
 
           - task: NodeTool@0
-            displayName: "Use Node $(NODE_VERSION)"
+            displayName: 'Use Node $(NODE_VERSION)'
             inputs:
               versionSpec: '$(NODE_VERSION)'
           # Il ne faudrait pas oublier de donner les droits d'exécution au wrapper maven ./mvnw (voir package.json)
@@ -67,27 +67,27 @@ stages:
               npm -v
               npm ci
               npm run backend:info
-            displayName: "Verify Node/npm + run a script"
+            displayName: 'Verify Node/npm + run a script'
             workingDirectory: backend
 
-  # --- Stage 3+4: Caches + Quality gates (Spotless, Checkstyle, Prettier) ---
+  # --- Stage 2+3: Caches + Quality gates (Spotless, Checkstyle, Prettier) ---
   - stage: deps_and_quality
-    displayName: "Stage 3+4 — Caches + Quality gates"
+    displayName: 'Stage 2+3 — Caches + Quality gates'
     dependsOn: setup_toolchain
     jobs:
       - job: fast_checks
-        displayName: "Pin tools → Restore caches → Prime deps → Quality checks"
+        displayName: 'Pin tools → Restore caches → Prime deps → Quality checks'
         steps:
           # 0) Pin JDK & Node dans ce job (chaque job a sa VM)
           - task: JavaToolInstaller@0
-            displayName: "Set up Java $(JDK_VERSION) (x64)"
+            displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
               versionSpec: '$(JDK_VERSION)'
               jdkArchitectureOption: 'x64'
               jdkSourceOption: 'PreInstalled'
 
           - task: NodeTool@0
-            displayName: "Use Node $(NODE_VERSION)"
+            displayName: 'Use Node $(NODE_VERSION)'
             inputs:
               versionSpec: '$(NODE_VERSION)'
 
@@ -103,11 +103,11 @@ stages:
               echo "##vso[task.setvariable variable=NPM_CACHE_KEY]$NPM_KEY"
               echo "MAVEN_CACHE_KEY=$MAVEN_KEY"
               echo "NPM_CACHE_KEY=$NPM_KEY"
-            displayName: "Compute cache keys (sha256)"
+            displayName: 'Compute cache keys (sha256)'
 
           # 2) Restore caches (Maven repo, Maven wrapper, npm cache)
           - task: Cache@2
-            displayName: "Restore Maven repo (~/.m2/repository)"
+            displayName: 'Restore Maven repo (~/.m2/repository)'
             inputs:
               key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
               restoreKeys: |
@@ -115,13 +115,13 @@ stages:
               path: '$(HOME)/.m2/repository'
 
           - task: Cache@2
-            displayName: "Restore Maven wrapper (~/.m2/wrapper)"
+            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
             inputs:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
           - task: Cache@2
-            displayName: "Restore npm cache (~/.npm)"
+            displayName: 'Restore npm cache (~/.npm)'
             inputs:
               key: 'npm | $(Agent.OS) | $(NPM_CACHE_KEY)'
               restoreKeys: |
@@ -131,30 +131,29 @@ stages:
           # 3) Priming des dépendances (pour remplir/valider les caches)
           - script: |
               ./mvnw -ntp -B dependency:go-offline
-            displayName: "Prime Maven deps (go-offline)"
+            displayName: 'Prime Maven deps (go-offline)'
             workingDirectory: backend
 
           - script: npm ci
-            displayName: "Prime npm cache (npm ci)"
+            displayName: 'Prime npm cache (npm ci)'
             workingDirectory: backend
 
           # 4) Gates de formatage/qualité (fail-fast)
           - script: |
               ./mvnw -ntp -B spotless:check
-            displayName: "Spotless check (Java)"
+            displayName: 'Spotless check (Java)'
             workingDirectory: backend
 
           - script: |
               ./mvnw -ntp -B -DskipTests=true checkstyle:check
-            displayName: "Checkstyle check (Java)"
+            displayName: 'Checkstyle check (Java)'
             workingDirectory: backend
 
           - script: |
               npx prettier --check "**/*.{md,json,yml,yaml}"
-            displayName: "Prettier check (md/json/yml)"
+            displayName: 'Prettier check (md/json/yml)'
             workingDirectory: backend
 # ---------------------------------------------------------------------------
-
 
 # ---------------------------------------------------------------------------
 
