@@ -30,6 +30,11 @@ pool:
 variables:
   JDK_VERSION: '17'
   NODE_VERSION: '22.x'
+  SPRING_OUTPUT_ANSI_ENABLED: NEVER
+  SPRING_JPA_SHOW_SQL: false
+  JHI_DISABLE_WEBPACK_LOGS: true
+  NG_CLI_ANALYTICS: 'false'
+  JHI_E2E_HEADLESS: tru
 
 stages:
   - stage: setup_toolchain
@@ -56,7 +61,7 @@ stages:
             displayName: "Use Node $(NODE_VERSION)"
             inputs:
               versionSpec: '$(NODE_VERSION)'
-
+# Il ne faudrait pas oublier de donner les droits d'exécution au wrapper maven ./mvnw (voir package.json)
           - script: |
               node -v
               npm -v
@@ -64,6 +69,69 @@ stages:
               npm run backend:info
             displayName: "Verify Node/npm + run a script"
             workingDirectory: backend
+
+  # --- Stage 3: Build caches (Maven + npm) -----------------------------------
+  - stage: build_caches
+    displayName: "Stage 3 — Caches Maven & npm"
+    dependsOn: setup_toolchain
+    jobs:
+      - job: cache_job
+        displayName: "Restore caches & prime deps"
+        steps:
+          # Calcule des clés de cache à partir des fichiers de lock
+          - script: |
+              echo "Calcul des clés de cache…"
+              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
+              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+              if [ -f backend/package-lock.json ]; then
+                NPM_KEY=$(sha256sum backend/package-lock.json | cut -d' ' -f1)
+              else
+                NPM_KEY="no-lock"
+              fi
+              echo "##vso[task.setvariable variable=NPM_CACHE_KEY]$NPM_KEY"
+              echo "MAVEN_CACHE_KEY=$MAVEN_KEY"
+              echo "NPM_CACHE_KEY=$NPM_KEY"
+            displayName: "Compute cache keys (sha256)"
+
+          # Cache Maven repository
+          - task: Cache@2
+            displayName: "Cache Maven repo (~/.m2/repository)"
+            inputs:
+              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
+              restoreKeys: |
+                maven | $(Agent.OS)
+              path: '$(HOME)/.m2/repository'
+
+          # Cache Maven wrapper distributions
+          - task: Cache@2
+            displayName: "Cache Maven wrapper (~/.m2/wrapper)"
+            inputs:
+              key: 'maven-wrapper | $(Agent.OS)'
+              path: '$(HOME)/.m2/wrapper'
+
+          # Cache npm cache (pas node_modules)
+          - task: Cache@2
+            displayName: "Cache npm (~/.npm)"
+            inputs:
+              key: 'npm | $(Agent.OS) | $(NPM_CACHE_KEY)'
+              restoreKeys: |
+                npm | $(Agent.OS)
+              path: '$(HOME)/.npm'
+
+          # Priming rapide pour éviter les fails réseau plus tard
+          - script: |
+              ./mvnw -ntp -B dependency:go-offline
+            displayName: "Prime Maven deps (go-offline)"
+            workingDirectory: backend
+
+          - script: |
+              npm ci
+            displayName: "Prime npm cache (npm ci)"
+            workingDirectory: backend
+
+
+# ---------------------------------------------------------------------------
+
 #jobs:
 #  - job: Test
 #    pool:
