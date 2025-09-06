@@ -70,17 +70,29 @@ stages:
             displayName: "Verify Node/npm + run a script"
             workingDirectory: backend
 
-  # --- Stage 2: Build caches (Maven + npm) -----------------------------------
-  - stage: build_caches
-    displayName: "Stage 2 — Caches Maven & npm"
+  # --- Stage 3+4: Caches + Quality gates (Spotless, Checkstyle, Prettier) ---
+  - stage: deps_and_quality
+    displayName: "Stage 3+4 — Caches + Quality gates"
     dependsOn: setup_toolchain
     jobs:
-      - job: cache_job
-        displayName: "Restore caches & prime deps"
+      - job: fast_checks
+        displayName: "Pin tools → Restore caches → Prime deps → Quality checks"
         steps:
-          # Calcule des clés de cache à partir des fichiers de lock
+          # 0) Pin JDK & Node dans ce job (chaque job a sa VM)
+          - task: JavaToolInstaller@0
+            displayName: "Set up Java $(JDK_VERSION) (x64)"
+            inputs:
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - task: NodeTool@0
+            displayName: "Use Node $(NODE_VERSION)"
+            inputs:
+              versionSpec: '$(NODE_VERSION)'
+
           - script: |
-              echo "Calcul des clés de cache…"
+              echo "Compute cache keys…"
               MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
               echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
               if [ -f backend/package-lock.json ]; then
@@ -93,64 +105,50 @@ stages:
               echo "NPM_CACHE_KEY=$NPM_KEY"
             displayName: "Compute cache keys (sha256)"
 
-          # Cache Maven repository
+          # 2) Restore caches (Maven repo, Maven wrapper, npm cache)
           - task: Cache@2
-            displayName: "Cache Maven repo (~/.m2/repository)"
+            displayName: "Restore Maven repo (~/.m2/repository)"
             inputs:
               key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
               restoreKeys: |
                 maven | $(Agent.OS)
               path: '$(HOME)/.m2/repository'
 
-          # Cache Maven wrapper distributions
           - task: Cache@2
-            displayName: "Cache Maven wrapper (~/.m2/wrapper)"
+            displayName: "Restore Maven wrapper (~/.m2/wrapper)"
             inputs:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
-          # Cache npm cache (pas node_modules)
           - task: Cache@2
-            displayName: "Cache npm (~/.npm)"
+            displayName: "Restore npm cache (~/.npm)"
             inputs:
               key: 'npm | $(Agent.OS) | $(NPM_CACHE_KEY)'
               restoreKeys: |
                 npm | $(Agent.OS)
               path: '$(HOME)/.npm'
 
-          # Priming rapide pour éviter les fails réseau plus tard
+          # 3) Priming des dépendances (pour remplir/valider les caches)
           - script: |
               ./mvnw -ntp -B dependency:go-offline
             displayName: "Prime Maven deps (go-offline)"
             workingDirectory: backend
 
-          - script: |
-              npm ci
+          - script: npm ci
             displayName: "Prime npm cache (npm ci)"
             workingDirectory: backend
 
-  # --- Stage 3: Gates de formatage & qualité ---------------------------------
-  - stage: quality_gates
-    displayName: "Stage 3 — Gates format & qualité (Spotless, Checkstyle, Prettier)"
-    dependsOn: build_caches
-    jobs:
-      - job: quality
-        displayName: "Quality checks (fail-fast)"
-        steps:
-          # 1) Spotless (Java) — format check only
+          # 4) Gates de formatage/qualité (fail-fast)
           - script: |
               ./mvnw -ntp -B spotless:check
             displayName: "Spotless check (Java)"
             workingDirectory: backend
 
-          # 2) Checkstyle (Java) — règles/conventions
           - script: |
               ./mvnw -ntp -B -DskipTests=true checkstyle:check
             displayName: "Checkstyle check (Java)"
             workingDirectory: backend
 
-          # 3) Prettier (non-Java) — Markdown / YAML / JSON
-          #    (on évite .java pour ne pas doubler avec Spotless)
           - script: |
               npx prettier --check "**/*.{md,json,yml,yaml}"
             displayName: "Prettier check (md/json/yml)"
