@@ -418,22 +418,21 @@ stages:
           # 4) Détecter la présence des outputs IT et exposer des variables de step
           - script: |
               if [ -d "backend/target/failsafe-reports" ]; then
-                echo "##vso[task.setvariable variable=hasFailsafe;isOutput=true]true"
+                echo "##vso[task.setvariable variable=hasFailsafe]true"
               else
-                echo "##vso[task.setvariable variable=hasFailsafe;isOutput=true]false"
+                echo "##vso[task.setvariable variable=hasFailsafe]false"
               fi
               if [ -f "backend/target/site/jacoco-it/jacoco.xml" ]; then
-                echo "##vso[task.setvariable variable=hasJacocoIt;isOutput=true]true"
+                echo "##vso[task.setvariable variable=hasJacocoIt]true"
               else
-                echo "##vso[task.setvariable variable=hasJacocoIt;isOutput=true]false"
+                echo "##vso[task.setvariable variable=hasJacocoIt]false"
               fi
-            name: detect_outputs
             displayName: 'Detect IT outputs (failsafe & jacoco-it)'
 
           # 5) Publier JUnit IT (Failsafe) + Couverture JaCoCo-IT (si présent)
           - task: PublishTestResults@2
             displayName: 'Publish JUnit IT results (Failsafe)'
-            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasFailsafe'], 'true'))
+            condition: and(succeeded(), eq(variables['hasFailsafe'], 'true'))
             inputs:
               testResultsFormat: 'JUnit'
               testResultsFiles: 'backend/target/failsafe-reports/*.xml'
@@ -442,27 +441,26 @@ stages:
               failTaskOnFailedTests: true
               testRunTitle: 'Integration tests (Failsafe)'
 
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: failsafe-reports'
+            condition: and(succeeded(), eq(variables['hasFailsafe'], 'true'))
+            inputs:
+              targetPath: 'backend/target/failsafe-reports'
+              artifact: 'itests-failsafe'
+              publishLocation: 'pipeline'
+
           - task: PublishCodeCoverageResults@2
             displayName: 'Publish IT code coverage (JaCoCo IT)'
-            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasJacocoIt'], 'true'))
+            condition: and(succeeded(), eq(variables['hasJacocoIt'], 'true'))
             inputs:
               codeCoverageTool: 'JaCoCo'
               summaryFileLocation: 'backend/target/site/jacoco-it/jacoco.xml'
               reportDirectory: 'backend/target/site/jacoco-it'
               failIfCoverageEmpty: false
 
-          # 6) Artefacts utiles (diagnostics)
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: failsafe-reports'
-            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasFailsafe'], 'true'))
-            inputs:
-              targetPath: 'backend/target/failsafe-reports'
-              artifact: 'itests-failsafe'
-              publishLocation: 'pipeline'
-
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: jacoco-it'
-            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasJacocoIt'], 'true'))
+            condition: and(succeeded(), eq(variables['hasJacocoIt'], 'true'))
             inputs:
               targetPath: 'backend/target/site/jacoco-it'
               artifact: 'jacoco-coverage-it'
