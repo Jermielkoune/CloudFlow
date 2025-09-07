@@ -234,19 +234,18 @@ stages:
               artifact: 'jacoco-coverage'
               publishLocation: 'pipeline'
 
-  # --- Stage 5: SonarCloud (Quality Gate) - sans relancer les tests ----------
+  # --- Stage 5: SonarCloud (no extension, reuse tests, block on QG) ---------
   - stage: quality_gate
-    displayName: 'Stage 5 — SonarCloud (Quality Gate)'
+    displayName: 'Stage 5 — SonarCloud (Quality Gate, no extensions)'
     dependsOn: unit_tests
     condition: succeeded()
     jobs:
       - job: sonar_analysis
-        displayName: 'Reuse test reports -> compile (no tests) -> Sonar analysis'
+        displayName: 'Compile (no tests) -> Sonar -> Block on QG'
         pool:
           vmImage: 'ubuntu-latest'
-
         steps:
-          # Java 17 pour ce job
+          # Java 17
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION)'
             inputs:
@@ -254,12 +253,11 @@ stages:
               jdkArchitectureOption: 'x64'
               jdkSourceOption: 'PreInstalled'
 
-          # Restaure les caches Maven (vite & reproductible)
+          # Caches Maven
           - script: |
               MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
               echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
             displayName: 'Compute Maven cache key (sha256)'
-
           - task: Cache@2
             displayName: 'Restore Maven repo (~/.m2/repository)'
             inputs:
@@ -267,55 +265,55 @@ stages:
               restoreKeys: |
                 maven | $(Agent.OS)
               path: '$(HOME)/.m2/repository'
-
           - task: Cache@2
             displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
             inputs:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
-          # Télécharge les rapports produits au stage "unit_tests"
+          # Rapports tests/couverture depuis le stage "unit_tests"
           - task: DownloadPipelineArtifact@2
             displayName: 'Download JaCoCo report'
             inputs:
               artifact: 'jacoco-coverage'
-              path: 'backend/target/site/jacoco' # jacoco.xml attendu ici
-
+              path: 'backend/target/site/jacoco'
           - task: DownloadPipelineArtifact@2
             displayName: 'Download JUnit surefire reports'
             inputs:
               artifact: 'unit-tests-surefire'
               path: 'backend/target/surefire-reports'
 
-          # Prépare l'analyse Sonar (mode générique, token via variable secrète)
-          - task: SonarQubePrepare@6
-            displayName: 'Prepare Sonar analysis'
-            inputs:
-              SonarQube: 'Sonarcloud'
-              scannerMode: 'Other'
-              extraProperties: |
-                sonar.projectKey=sikaseal_cloudflow
-                sonar.organization=sikaseal
-                sonar.host.url=https://sonarcloud.io
-                sonar.login=$(SONAR_TOKEN)
-
-          # Compile sans tests (pour produire target/classes, requis par Sonar)
-          - script: |
-              ./mvnw -B -ntp -DskipTests=true -DskipITs=true package
+          # Compile sans tests (fournit target/classes pour règles Java)
+          - script: ./mvnw -B -ntp -DskipTests=true -DskipITs=true package
+            workingDirectory: backend
             displayName: 'Compile only (no tests)'
-            workingDirectory: backend
 
-          # Lancement de l'analyse (seule) — pas de tests relancés
+          # Analyse Sonar via Maven (utilise sonar-project.properties)
           - script: |
-              ./mvnw -B -ntp sonar:sonar
-            displayName: 'Run Sonar analysis'
+              ./mvnw -B -ntp sonar:sonar \
+                -Dsonar.login=$(SONAR_TOKEN)
             workingDirectory: backend
+            displayName: 'Run Sonar analysis (Maven + properties file)'
 
-          # Bloque sur le Quality Gate (échoue si Gate rouge)
-          - task: SonarQubePublish@6
-            displayName: 'Publish Quality Gate result'
-            inputs:
-              pollingTimeoutSec: '300'
+          # Blocage Quality Gate via API SonarCloud (branche courante)
+          - script: |
+              echo "Waiting for Quality Gate..."
+              ATTEMPTS=30
+              SLEEP=10
+              BRANCH="$(Build.SourceBranchName)"
+              URL="https://sonarcloud.io/api/qualitygates/project_status?projectKey=sikaseal_cloudflow&branch=${BRANCH}"
+              for i in $(seq 1 $ATTEMPTS); do
+                RESP=$(curl -s -u "$(SONAR_TOKEN):" "$URL" || true)
+                echo "Attempt $i: $(echo "$RESP" | tr -d '\n')"
+                if echo "$RESP" | grep -q '"status":"OK"'; then
+                  echo "Quality Gate: OK"; exit 0
+                elif echo "$RESP" | grep -q '"status":"ERROR"'; then
+                  echo "Quality Gate: FAILED"; exit 1
+                fi
+                sleep $SLEEP
+              done
+              echo "Quality Gate timeout"; exit 2
+            displayName: 'Block on Quality Gate (poll SonarCloud)'
   # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
