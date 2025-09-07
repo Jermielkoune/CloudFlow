@@ -297,7 +297,14 @@ stages:
 
           # Analyse Sonar via Maven (utilise sonar-project.properties)
           - script: |
-              ./mvnw -B -ntp sonar:sonar -Dsonar.token="$SONAR_TOKEN"
+              ./mvnw -B -ntp sonar:sonar \
+                -Dsonar.host.url=https://sonarcloud.io \
+                -Dsonar.organization=sikaseal \
+                -Dsonar.projectKey=sikaseal_cloudflow \
+                -Dsonar.token="$SONAR_TOKEN" \
+                -Dsonar.java.binaries=target/classes \
+                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                -Dsonar.junit.reportPaths=target/surefire-reports
             workingDirectory: backend
             displayName: 'Run Sonar analysis (Maven + properties file)'
             env:
