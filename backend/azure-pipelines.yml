@@ -362,6 +362,7 @@ stages:
               MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
               echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
             displayName: 'Compute Maven cache key (sha256)'
+
           - task: Cache@2
             displayName: 'Restore Maven repo (~/.m2/repository)'
             inputs:
@@ -369,6 +370,7 @@ stages:
               restoreKeys: |
                 maven | $(Agent.OS)
               path: '$(HOME)/.m2/repository'
+
           - task: Cache@2
             displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
             inputs:
@@ -380,13 +382,20 @@ stages:
               set -e
               echo "Starting docker compose (PostgreSQL)…"
               docker compose -f src/main/docker/postgresql.yml up -d
-              echo "Waiting for DB to be healthy…"
-              # attend que le conteneur soit healthy (30x2s = 60s max)
-              for i in {1..30}; do
-                state=$(docker compose -f src/main/docker/postgresql.yml ps --format json | jq -r '.[0].Health')
-                if [ "$state" = "healthy" ]; then echo "DB is healthy"; break; fi
-                sleep 2
-              done
+              echo "Waiting for DB health..."
+              # suppose que le service s'appelle 'postgresql' (JHipster standard)
+              CID="$(docker compose -f src/main/docker/postgresql.yml ps -q postgresql || true)"
+              if [ -z "$CID" ]; then
+                echo "WARN: container id not found, sleep 20s"
+                sleep 20
+              else
+                for i in {1..30}; do
+                  STATUS="$(docker inspect -f '{{.State.Health.Status}}' "$CID" 2>/dev/null || echo "unknown")"
+                  echo "Attempt $i: health=$STATUS"
+                  if [ "$STATUS" = "healthy" ]; then break; fi
+                  sleep 2
+                done
+              fi
             workingDirectory: backend
             displayName: '(optional) Compose up: PostgreSQL'
             condition: eq(variables['USE_COMPOSE'], 'true')
@@ -398,15 +407,33 @@ stages:
               ./mvnw -B -ntp -DskipTests=true verify
             workingDirectory: backend
             displayName: 'Maven integration tests (Failsafe)'
+
+          # Debug: voir ce qui a été produit
           - script: |
               echo "Tree of backend/target (debug)"
               ls -la backend/target || true
               ls -la backend/target/site || true
             displayName: 'Debug: list target dirs'
 
-          # 4) Publier JUnit IT (Failsafe) + Couverture JaCoCo-IT
+          # 4) Détecter la présence des outputs IT et exposer des variables de step
+          - script: |
+              if [ -d "backend/target/failsafe-reports" ]; then
+                echo "##vso[task.setvariable variable=hasFailsafe;isOutput=true]true"
+              else
+                echo "##vso[task.setvariable variable=hasFailsafe;isOutput=true]false"
+              fi
+              if [ -f "backend/target/site/jacoco-it/jacoco.xml" ]; then
+                echo "##vso[task.setvariable variable=hasJacocoIt;isOutput=true]true"
+              else
+                echo "##vso[task.setvariable variable=hasJacocoIt;isOutput=true]false"
+              fi
+            name: detect_outputs
+            displayName: 'Detect IT outputs (failsafe & jacoco-it)'
+
+          # 5) Publier JUnit IT (Failsafe) + Couverture JaCoCo-IT (si présent)
           - task: PublishTestResults@2
             displayName: 'Publish JUnit IT results (Failsafe)'
+            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasFailsafe'], 'true'))
             inputs:
               testResultsFormat: 'JUnit'
               testResultsFiles: 'backend/target/failsafe-reports/*.xml'
@@ -414,37 +441,34 @@ stages:
               mergeTestResults: true
               failTaskOnFailedTests: true
               testRunTitle: 'Integration tests (Failsafe)'
-            condition: and(succeeded(), exists('backend/target/failsafe-reports'))
 
           - task: PublishCodeCoverageResults@2
             displayName: 'Publish IT code coverage (JaCoCo IT)'
+            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasJacocoIt'], 'true'))
             inputs:
               codeCoverageTool: 'JaCoCo'
-              # JHipster configure souvent un site dédié integration:
-              # jacoco-it/jacoco.xml via 'report-integration'
               summaryFileLocation: 'backend/target/site/jacoco-it/jacoco.xml'
               reportDirectory: 'backend/target/site/jacoco-it'
               failIfCoverageEmpty: false
-            condition: and(succeeded(), exists('backend/target/site/jacoco-it/jacoco.xml'))
 
-          # 5) Artefacts utiles (diagnostics)
+          # 6) Artefacts utiles (diagnostics)
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: failsafe-reports'
+            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasFailsafe'], 'true'))
             inputs:
               targetPath: 'backend/target/failsafe-reports'
               artifact: 'itests-failsafe'
               publishLocation: 'pipeline'
-            condition: and(succeeded(), exists('backend/target/failsafe-reports'))
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: jacoco-it'
+            condition: and(succeeded(), eq(steps.detect_outputs.outputs['hasJacocoIt'], 'true'))
             inputs:
               targetPath: 'backend/target/site/jacoco-it'
               artifact: 'jacoco-coverage-it'
               publishLocation: 'pipeline'
-            condition: and(succeeded(), exists('backend/target/site/jacoco-it'))
 
-          # 6) Teardown compose (toujours)
+          # 7) Teardown compose (toujours si utilisé)
           - script: |
               docker compose -f src/main/docker/postgresql.yml down -v || true
             workingDirectory: backend
