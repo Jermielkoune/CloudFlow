@@ -301,6 +301,7 @@ stages:
                 -Dsonar.host.url=https://sonarcloud.io \
                 -Dsonar.organization=sikaseal \
                 -Dsonar.projectKey=sikaseal_cloudflow \
+                -Dsonar.branch.name="$(Build.SourceBranchName)" \
                 -Dsonar.token="$SONAR_TOKEN" \
                 -Dsonar.java.binaries=target/classes \
                 -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
@@ -313,7 +314,7 @@ stages:
           # Blocage Quality Gate via API SonarCloud (branche courante)
           - script: |
               echo "Waiting for Quality Gate..."
-              ATTEMPTS=30
+              ATTEMPTS=90
               SLEEP=10
               BRANCH="$(Build.SourceBranchName)"
               URL="https://sonarcloud.io/api/qualitygates/project_status?projectKey=sikaseal_cloudflow&branch=${BRANCH}"
