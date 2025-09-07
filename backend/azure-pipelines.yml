@@ -398,6 +398,11 @@ stages:
               ./mvnw -B -ntp -DskipTests=true verify
             workingDirectory: backend
             displayName: 'Maven integration tests (Failsafe)'
+          - script: |
+              echo "Tree of backend/target (debug)"
+              ls -la backend/target || true
+              ls -la backend/target/site || true
+            displayName: 'Debug: list target dirs'
 
           # 4) Publier JUnit IT (Failsafe) + Couverture JaCoCo-IT
           - task: PublishTestResults@2
@@ -409,6 +414,7 @@ stages:
               mergeTestResults: true
               failTaskOnFailedTests: true
               testRunTitle: 'Integration tests (Failsafe)'
+            condition: and(succeeded(), exists('backend/target/failsafe-reports'))
 
           - task: PublishCodeCoverageResults@2
             displayName: 'Publish IT code coverage (JaCoCo IT)'
@@ -419,6 +425,7 @@ stages:
               summaryFileLocation: 'backend/target/site/jacoco-it/jacoco.xml'
               reportDirectory: 'backend/target/site/jacoco-it'
               failIfCoverageEmpty: false
+            condition: and(succeeded(), exists('backend/target/site/jacoco-it/jacoco.xml'))
 
           # 5) Artefacts utiles (diagnostics)
           - task: PublishPipelineArtifact@1
@@ -427,6 +434,7 @@ stages:
               targetPath: 'backend/target/failsafe-reports'
               artifact: 'itests-failsafe'
               publishLocation: 'pipeline'
+            condition: and(succeeded(), exists('backend/target/failsafe-reports'))
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: jacoco-it'
@@ -434,6 +442,7 @@ stages:
               targetPath: 'backend/target/site/jacoco-it'
               artifact: 'jacoco-coverage-it'
               publishLocation: 'pipeline'
+            condition: and(succeeded(), exists('backend/target/site/jacoco-it'))
 
           # 6) Teardown compose (toujours)
           - script: |
