@@ -332,6 +332,115 @@ stages:
             displayName: 'Block on Quality Gate (poll SonarCloud)'
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
+  # --- Stage 6: Tests d’intégration (ephemeral env) ---------------------------
+  - stage: integration_tests
+    displayName: 'Stage 6 — Tests d’intégration (ephemeral)'
+    dependsOn: quality_gate
+    condition: succeeded()
+    variables:
+      USE_COMPOSE: 'false' # 'true' pour démarrer docker compose (DB externe)
+    jobs:
+      - job: itests
+        displayName: 'Run Failsafe ITs + publish reports'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          # 0) Tooling (VM neuve)
+          - task: JavaToolInstaller@0
+            displayName: 'Set up Java $(JDK_VERSION)'
+            inputs:
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - script: chmod +x mvnw
+            displayName: 'Fix exec bit for mvnw'
+            workingDirectory: backend
+
+          # 1) Caches Maven
+          - script: |
+              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
+              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+            displayName: 'Compute Maven cache key (sha256)'
+          - task: Cache@2
+            displayName: 'Restore Maven repo (~/.m2/repository)'
+            inputs:
+              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
+              restoreKeys: |
+                maven | $(Agent.OS)
+              path: '$(HOME)/.m2/repository'
+          - task: Cache@2
+            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
+            inputs:
+              key: 'maven-wrapper | $(Agent.OS)'
+              path: '$(HOME)/.m2/wrapper'
+
+          # 2) (Option) Environnement DB via docker compose
+          - script: |
+              set -e
+              echo "Starting docker compose (PostgreSQL)…"
+              docker compose -f src/main/docker/postgresql.yml up -d
+              echo "Waiting for DB to be healthy…"
+              # attend que le conteneur soit healthy (30x2s = 60s max)
+              for i in {1..30}; do
+                state=$(docker compose -f src/main/docker/postgresql.yml ps --format json | jq -r '.[0].Health')
+                if [ "$state" = "healthy" ]; then echo "DB is healthy"; break; fi
+                sleep 2
+              done
+            workingDirectory: backend
+            displayName: '(optional) Compose up: PostgreSQL'
+            condition: eq(variables['USE_COMPOSE'], 'true')
+
+          # 3) Lancer UNIQUEMENT les IT (Failsafe)
+          #    -DskipTests=true   => skip Surefire (unit)
+          #    verify (Failsafe)  => run ITs (**/*IT*|*IntTest*) + post-rapport
+          - script: |
+              ./mvnw -B -ntp -DskipTests=true verify
+            workingDirectory: backend
+            displayName: 'Maven integration tests (Failsafe)'
+
+          # 4) Publier JUnit IT (Failsafe) + Couverture JaCoCo-IT
+          - task: PublishTestResults@2
+            displayName: 'Publish JUnit IT results (Failsafe)'
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: 'backend/target/failsafe-reports/*.xml'
+              searchFolder: '$(System.DefaultWorkingDirectory)'
+              mergeTestResults: true
+              failTaskOnFailedTests: true
+              testRunTitle: 'Integration tests (Failsafe)'
+
+          - task: PublishCodeCoverageResults@2
+            displayName: 'Publish IT code coverage (JaCoCo IT)'
+            inputs:
+              codeCoverageTool: 'JaCoCo'
+              # JHipster configure souvent un site dédié integration:
+              # jacoco-it/jacoco.xml via 'report-integration'
+              summaryFileLocation: 'backend/target/site/jacoco-it/jacoco.xml'
+              reportDirectory: 'backend/target/site/jacoco-it'
+              failIfCoverageEmpty: false
+
+          # 5) Artefacts utiles (diagnostics)
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: failsafe-reports'
+            inputs:
+              targetPath: 'backend/target/failsafe-reports'
+              artifact: 'itests-failsafe'
+              publishLocation: 'pipeline'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: jacoco-it'
+            inputs:
+              targetPath: 'backend/target/site/jacoco-it'
+              artifact: 'jacoco-coverage-it'
+              publishLocation: 'pipeline'
+
+          # 6) Teardown compose (toujours)
+          - script: |
+              docker compose -f src/main/docker/postgresql.yml down -v || true
+            workingDirectory: backend
+            displayName: '(optional) Compose down'
+            condition: and(always(), eq(variables['USE_COMPOSE'], 'true'))
   # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
