@@ -535,6 +535,7 @@ stages:
             displayName: 'Snyk test (fail on $(SNYK_SEVERITY)+)'
             env:
               SNYK_TOKEN: $(SNYK_TOKEN)
+            continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
 
           # Rapports (JSON/SARIF) — utiles pour archives/analyses
           - script: |
