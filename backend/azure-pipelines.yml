@@ -332,7 +332,7 @@ stages:
           # Blocage Quality Gate via API SonarCloud (branche courante)
           - script: |
               echo "Waiting for Quality Gate..."
-              ATTEMPTS=90
+              ATTEMPTS=60
               SLEEP=10
               BRANCH="$(Build.SourceBranchName)"
               URL="https://sonarcloud.io/api/qualitygates/project_status?projectKey=sikaseal_cloudflow&branch=${BRANCH}"
@@ -350,6 +350,7 @@ stages:
             displayName: 'Block on Quality Gate (poll SonarCloud)'
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
+            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   # --- Stage 6: Tests d’intégration (ephemeral env) ---------------------------
   - stage: integration_tests
     displayName: 'Stage 6 — Tests d’intégration (ephemeral)'
