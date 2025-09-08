@@ -4,10 +4,10 @@
 trigger:
   batch: true
   branches:
-    include: [ main, develop, 'feature/*' ]
+    include: [main, develop, 'feature/*']
   paths:
-    include: [ 'backend/pom.xml', 'backend/src/**' ]
-    exclude: [ 'docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md' ]
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
 
 # PR (GitHub): build de validation uniquement si code Java change.
 # autoCancel: true annule le run précédent si de nouveaux commits arrivent.
@@ -16,10 +16,10 @@ pr:
   autoCancel: true
   drafts: false
   branches:
-    include: [ main, develop, 'feature/*' ]
+    include: [main, develop, 'feature/*']
   paths:
-    include: [ 'backend/pom.xml', 'backend/src/**' ]
-    exclude: [ 'docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md' ]
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
 # ---------------------------------------------------------------------------
 
 # Microsoft-hosted agent (Azure Pipelines)
@@ -51,7 +51,6 @@ variables:
     value: 'true'
   - name: DAST_TARGET_URL
     value: 'http://localhost:8080'
-
 
 stages:
   - stage: setup_toolchain
@@ -493,24 +492,24 @@ stages:
             condition: and(always(), eq(variables['USE_COMPOSE'], 'true'))
   # --- Stage 7: Security scans (SAST & optional DAST) -------------------------
   - stage: security_scans
-    displayName: "Stage 7 — Security scans (SAST & optional DAST)"
+    displayName: 'Stage 7 — Security scans (SAST & optional DAST)'
     dependsOn: integration_tests
     condition: succeeded()
     jobs:
       # -------------------- SAST (Snyk) --------------------
       - job: sast_snyk
-        displayName: "SAST — Snyk (code & dépendances)"
+        displayName: 'SAST — Snyk (code & dépendances)'
         pool: { vmImage: 'ubuntu-latest' }
         steps:
           - script: chmod +x mvnw
-            displayName: "Fix exec bit for mvnw"
+            displayName: 'Fix exec bit for mvnw'
             workingDirectory: backend
 
           # Optionnel : cache Maven pour accélérer l’analyse Java
           - script: |
               MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
               echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
-            displayName: "Compute Maven cache key (sha256)"
+            displayName: 'Compute Maven cache key (sha256)'
           - task: Cache@2
             displayName: 'Restore Maven repo (~/.m2/repository)'
             inputs:
@@ -524,7 +523,7 @@ stages:
               curl -fsSL -o snyk "https://github.com/snyk/cli/releases/download/v$(SNYK_VERSION)/snyk-linux"
               chmod +x snyk
               ./snyk --version
-            displayName: "Install Snyk CLI ($(SNYK_VERSION))"
+            displayName: 'Install Snyk CLI ($(SNYK_VERSION))'
 
           # Scan SAST (échec selon seuil)
           - script: |
@@ -532,7 +531,7 @@ stages:
               ./snyk test --all-projects \
                 --severity-threshold=$(SNYK_SEVERITY) \
                 --fail-on=$(SNYK_FAIL_ON)
-            displayName: "Snyk test (fail on $(SNYK_SEVERITY)+)"
+            displayName: 'Snyk test (fail on $(SNYK_SEVERITY)+)'
             env:
               SNYK_TOKEN: $(SNYK_TOKEN)
 
@@ -541,34 +540,34 @@ stages:
               mkdir -p security-reports
               ./snyk test --all-projects --json-file-output=security-reports/snyk-findings.json || true
               ./snyk test --all-projects --sarif-file-output=security-reports/snyk-findings.sarif || true
-            displayName: "Snyk reports (JSON & SARIF)"
+            displayName: 'Snyk reports (JSON & SARIF)'
             env:
               SNYK_TOKEN: $(SNYK_TOKEN)
 
           - task: PublishPipelineArtifact@1
-            displayName: "Publish artifact: snyk-reports"
+            displayName: 'Publish artifact: snyk-reports'
             inputs:
-              targetPath: "security-reports"
-              artifact: "snyk-reports"
-              publishLocation: "pipeline"
+              targetPath: 'security-reports'
+              artifact: 'snyk-reports'
+              publishLocation: 'pipeline'
 
           # Snyk monitor — seulement sur main si demandé
           - script: |
               ./snyk monitor --all-projects
-            displayName: "Snyk monitor (main only)"
+            displayName: 'Snyk monitor (main only)'
             condition: and(succeeded(), eq(variables['SNYK_MONITOR_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
             env:
               SNYK_TOKEN: $(SNYK_TOKEN)
 
       # -------------------- DAST (OWASP ZAP) --------------------
       - job: dast_zap
-        displayName: "DAST — OWASP ZAP baseline"
+        displayName: 'DAST — OWASP ZAP baseline'
         pool: { vmImage: 'ubuntu-latest' }
         # Active seulement sur main (modifiable via RUN_DAST_ON_MAIN)
         condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         steps:
           - script: chmod +x mvnw
-            displayName: "Fix exec bit for mvnw"
+            displayName: 'Fix exec bit for mvnw'
             workingDirectory: backend
 
           # Build & run backend local (profil e2e/prod léger)
@@ -581,7 +580,7 @@ stages:
                 echo "Waiting app..."; sleep 2
               done
             workingDirectory: backend
-            displayName: "Start backend locally (e2e) & wait health"
+            displayName: 'Start backend locally (e2e) & wait health'
 
           # Lancer ZAP Baseline Scan (dans Docker)
           - script: |
@@ -590,15 +589,14 @@ stages:
                 owasp/zap2docker-stable zap-baseline.py \
                 -t $(DAST_TARGET_URL) \
                 -r zap_report.html || true
-            displayName: "OWASP ZAP baseline scan (HTML report)"
+            displayName: 'OWASP ZAP baseline scan (HTML report)'
 
           - task: PublishPipelineArtifact@1
-            displayName: "Publish artifact: zap-report.html"
+            displayName: 'Publish artifact: zap-report.html'
             inputs:
-              targetPath: "$(System.DefaultWorkingDirectory)/zap_report.html"
-              artifact: "zap-report"
-              publishLocation: "pipeline"
-
+              targetPath: '$(System.DefaultWorkingDirectory)/zap_report.html'
+              artifact: 'zap-report'
+              publishLocation: 'pipeline'
 
   # ---------------------------------------------------------------------------
 #jobs:
