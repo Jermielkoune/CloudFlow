@@ -573,14 +573,12 @@ stages:
       - job: dast_zap
         displayName: 'DAST — OWASP ZAP baseline'
         pool: { vmImage: 'ubuntu-latest' }
-        # Active seulement sur main (modifiable via RUN_DAST_ON_MAIN)
         condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         steps:
           - script: chmod +x mvnw
             displayName: 'Fix exec bit for mvnw'
             workingDirectory: backend
 
-          # Build & run backend local (profil e2e/prod léger)
           - script: |
               ./mvnw -B -ntp -DskipTests=true spring-boot:run -Dspring-boot.run.profiles=e2e &
               for i in {1..30}; do
@@ -592,7 +590,6 @@ stages:
             workingDirectory: backend
             displayName: 'Start backend locally (e2e) & wait health'
 
-          # Lancer ZAP Baseline Scan (dans Docker)
           - script: |
               set -e
 
@@ -626,7 +623,6 @@ stages:
               fi
             displayName: 'OWASP ZAP baseline scan (HTML report)'
 
-          # Stopper proprement l'app (toujours)
           - script: |
               echo "Stopping local Spring app..."
               pkill -f "org.springframework.boot" || true
@@ -645,7 +641,6 @@ stages:
               artifact: 'zap-report'
               publishLocation: 'pipeline'
 
-  # --- Stage 9: Secret Scanning (Gitleaks) ------------------------------------
   - stage: secret_scan
     displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
     dependsOn: security_scans
@@ -657,7 +652,7 @@ stages:
           vmImage: 'ubuntu-latest'
         steps:
           - checkout: self
-            fetchDepth: 0   # 0 = full history; mets 1 si tu veux scanner seulement l’état courant
+            fetchDepth: 0 # 0 = full history; 1 pour scanner seulement l’état courant
 
           - script: |
               set -euo pipefail
@@ -669,8 +664,6 @@ stages:
               ./gitleaks version
             displayName: 'Install Gitleaks (pinned)'
 
-          # 2) (Optionnel) Utiliser un fichier de config si présent (.gitleaks.toml)
-          #    On détecte automatiquement et on passe --config si le fichier existe.
           - script: |
               set -euo pipefail
               EXTRA_ARGS=""
@@ -708,7 +701,6 @@ stages:
               artifact: 'gitleaks-sarif'
               publishLocation: 'pipeline'
             condition: exists('$(GITLEAKS_REPORT_SARIF)')
-
 # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
