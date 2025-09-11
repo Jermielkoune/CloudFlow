@@ -676,23 +676,36 @@ stages:
                 --source . \
                 ${EXTRA_ARGS} \
                 --report-format json --report-path $(GITLEAKS_REPORT_JSON)
-              # produire aussi un SARIF pour outillage/ingestion ultérieure
               ./gitleaks detect --no-banner --redact \
                 --source . \
                 ${EXTRA_ARGS} \
                 --report-format sarif --report-path $(GITLEAKS_REPORT_SARIF)
             displayName: 'Run Gitleaks scan (JSON + SARIF)'
-            # 👉 Échec bloquant UNIQUEMENT sur main; ailleurs, on remonte l’info sans casser le build
             continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
 
-          # 3) Publier les rapports comme artefacts de pipeline
+          - script: |
+              set -e
+              if [ -f "$(GITLEAKS_REPORT_JSON)" ]; then
+                echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]true"
+              else
+                echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]false"
+              fi
+              if [ -f "$(GITLEAKS_REPORT_SARIF)" ]; then
+                echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]true"
+              else
+                echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]false"
+              fi
+              echo "JSON_EXISTS=$(GITLEAKS_JSON_EXISTS)"
+              echo "SARIF_EXISTS=$(GITLEAKS_SARIF_EXISTS)"
+            displayName: 'Detect Gitleaks outputs (set variables)'
+
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: gitleaks JSON'
             inputs:
               targetPath: '$(GITLEAKS_REPORT_JSON)'
               artifact: 'gitleaks-json'
               publishLocation: 'pipeline'
-            condition: exists('$(GITLEAKS_REPORT_JSON)')
+            condition: and(succeeded(), eq(variables['GITLEAKS_JSON_EXISTS'], 'true'))
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: gitleaks SARIF'
@@ -700,7 +713,7 @@ stages:
               targetPath: '$(GITLEAKS_REPORT_SARIF)'
               artifact: 'gitleaks-sarif'
               publishLocation: 'pipeline'
-            condition: exists('$(GITLEAKS_REPORT_SARIF)')
+            condition: and(succeeded(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
 # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
