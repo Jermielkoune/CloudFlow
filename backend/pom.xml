@@ -109,6 +109,18 @@
         <artifactId>commons-lang3</artifactId>
         <version>3.18.0</version>
       </dependency>
+      <dependency>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
+        <version>42.7.7</version>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.security</groupId>
+        <artifactId>spring-security-bom</artifactId>
+        <version>6.4.7</version> <!-- ajuste à la micro la plus récente disponible -->
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
     </dependencies>
   </dependencyManagement>
 
