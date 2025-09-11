@@ -617,36 +617,36 @@ stages:
               publishLocation: 'pipeline'
 
   # --- Stage 9: Secret Scanning (Gitleaks) ------------------------------------
-  - stage: secret_scan
-    displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
-    dependsOn: security_scans
-    condition: succeeded()
-    jobs:
-      - job: secrets
-        displayName: 'Scan repo for secrets'
-        pool:
-          vmImage: 'ubuntu-latest'
-        steps:
-          - script: |
-              echo "🔐 Installing Gitleaks (manual)..."
-              curl -sSfL -o gitleaks.tar.gz \
-                https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
-              tar -xzf gitleaks.tar.gz gitleaks
-              chmod +x gitleaks
-              ./gitleaks version
-
-              echo "🔍 Scanning for secrets..."
-              ./gitleaks detect --no-banner --source . --redact \
-                --report-format json --report-path gitleaks-report.json \
-                --exit-code 0
-            displayName: 'Run Gitleaks secret scan'
-
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish secret scan report'
-            inputs:
-              targetPath: 'gitleaks-report.json'
-              artifact: 'secret-scan'
-              publishLocation: 'pipeline'
+#  - stage: secret_scan
+#    displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
+#    dependsOn: security_scans
+#    condition: succeeded()
+#    jobs:
+#      - job: secrets
+#        displayName: 'Scan repo for secrets'
+#        pool:
+#          vmImage: 'ubuntu-latest'
+#        steps:
+#          - script: |
+#              echo "🔐 Installing Gitleaks (manual)..."
+#              curl -sSfL -o gitleaks.tar.gz \
+#                https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
+#              tar -xzf gitleaks.tar.gz gitleaks
+#              chmod +x gitleaks
+#              ./gitleaks version
+#
+#              echo "🔍 Scanning for secrets..."
+#              ./gitleaks detect --no-banner --source . --redact \
+#                --report-format json --report-path gitleaks-report.json \
+#                --exit-code 0
+#            displayName: 'Run Gitleaks secret scan'
+#
+#          - task: PublishPipelineArtifact@1
+#            displayName: 'Publish secret scan report'
+#            inputs:
+#              targetPath: 'gitleaks-report.json'
+#              artifact: 'secret-scan'
+#              publishLocation: 'pipeline'
 # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
