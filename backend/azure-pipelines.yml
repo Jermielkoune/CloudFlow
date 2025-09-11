@@ -666,22 +666,59 @@ stages:
 
           - script: |
               set -euo pipefail
+
               EXTRA_ARGS=""
               if [ -f ".gitleaks.toml" ]; then
                 echo "Found .gitleaks.toml → using as config"
                 EXTRA_ARGS="--config .gitleaks.toml"
               fi
-              echo "Running Gitleaks detect… (redact on, JSON + SARIF reports)"
-              ./gitleaks detect --no-banner --redact \
-                --source . \
-                ${EXTRA_ARGS} \
-                --report-format json --report-path $(GITLEAKS_REPORT_JSON)
-              ./gitleaks detect --no-banner --redact \
-                --source . \
-                ${EXTRA_ARGS} \
-                --report-format sarif --report-path $(GITLEAKS_REPORT_SARIF)
-            displayName: 'Run Gitleaks scan (JSON + SARIF)'
-            continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
+
+              echo "Running Gitleaks (JSON)…"
+              if ./gitleaks detect --no-banner --redact --source . ${EXTRA_ARGS} \
+                   --report-format json --report-path "$(GITLEAKS_REPORT_JSON)"; then
+                echo "##vso[task.setvariable variable=GITLEAKS_LEAKS]false"
+              else
+                echo "##vso[task.setvariable variable=GITLEAKS_LEAKS]true"
+                echo "Gitleaks found leaks (JSON generation done)."
+              fi
+
+              echo "Running Gitleaks (SARIF)…"
+              # On génère aussi le SARIF, sans interrompre si fuites
+              ./gitleaks detect --no-banner --redact --source . ${EXTRA_ARGS} \
+                --report-format sarif --report-path "$(GITLEAKS_REPORT_SARIF)" || true
+
+              # Marquer la présence des rapports
+              [ -f "$(GITLEAKS_REPORT_JSON)" ]  && echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]true"  || echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]false"
+              [ -f "$(GITLEAKS_REPORT_SARIF)" ] && echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]true" || echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]false"
+            displayName: 'Run Gitleaks scan (JSON + SARIF, resilient)'
+            continueOnError: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: gitleaks JSON'
+            inputs:
+              targetPath: '$(GITLEAKS_REPORT_JSON)'
+              artifact: 'gitleaks-json'
+              publishLocation: 'pipeline'
+            condition: and(succeededOrFailed(), eq(variables['GITLEAKS_JSON_EXISTS'], 'true'))
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: gitleaks SARIF'
+            inputs:
+              targetPath: '$(GITLEAKS_REPORT_SARIF)'
+              artifact: 'gitleaks-sarif'
+              publishLocation: 'pipeline'
+            condition: and(succeededOrFailed(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
+
+          # 3) Gate de politique: fail seulement sur main si des fuites existent
+          - script: |
+              echo "Leaks=$(GITLEAKS_LEAKS), Branch=$(Build.SourceBranch)"
+              if [ "$(GITLEAKS_LEAKS)" = "true" ] && [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+                echo "❌ Secrets detected and branch is main → failing the job."
+                exit 1
+              else
+                echo "✅ Non-blocking (either no leaks or not on main)."
+              fi
+            displayName: 'Policy gate: block only on main when leaks'
 
           - script: |
               set -e
