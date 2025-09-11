@@ -1,8 +1,7 @@
-title = "CloudFlow Gitleaks Config"
+title = "CloudFlow gitleaks config"
 
 [allowlist]
-description = "Exclure tous les fichiers de test"
 paths = [
-  '''src/test/.*''',    # tout sous src/test/...
-  '''.*Test\.java$''', # tous les fichiers qui finissent par Test.java
+  '''backend/src/test/resources/application-test\.properties''',
+  '''backend/src/test/java/com/sikaseal/security/jwt/AuthenticationIntegrationTest\.java'''
 ]

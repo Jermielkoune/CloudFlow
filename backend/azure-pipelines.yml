@@ -652,7 +652,7 @@ stages:
           vmImage: 'ubuntu-latest'
         steps:
           - checkout: self
-            fetchDepth: 0 # 0 = full history; 1 pour scanner seulement l’état courant
+            fetchDepth: 1 # 0 = full history; 1 pour scanner seulement l’état courant
 
           - script: |
               set -euo pipefail
@@ -699,7 +699,7 @@ stages:
               targetPath: '$(GITLEAKS_REPORT_JSON)'
               artifact: 'gitleaks-json'
               publishLocation: 'pipeline'
-            condition: and(succeededOrFailed(), eq(variables['GITLEAKS_JSON_EXISTS'], 'true'))
+            condition: and(always(), eq(variables['GITLEAKS_JSON_EXISTS'], 'true'))
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: gitleaks SARIF'
@@ -707,7 +707,7 @@ stages:
               targetPath: '$(GITLEAKS_REPORT_SARIF)'
               artifact: 'gitleaks-sarif'
               publishLocation: 'pipeline'
-            condition: and(succeededOrFailed(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
+            condition: and(always(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
 
           # 3) Gate de politique: fail seulement sur main si des fuites existent
           - script: |
