@@ -112,7 +112,7 @@
       <dependency>
         <groupId>org.springframework.security</groupId>
         <artifactId>spring-security-bom</artifactId>
-        <version>6.4.7</version> <!-- ajuste à la micro la plus récente disponible -->
+        <version>6.4.7</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
