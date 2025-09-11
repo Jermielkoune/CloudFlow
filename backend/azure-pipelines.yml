@@ -586,12 +586,28 @@ stages:
 
           # Lancer ZAP Baseline Scan (dans Docker)
           - script: |
+              mkdir -p "$(System.DefaultWorkingDirectory)/dast"
               docker run --rm -t \
-                --network="host" \
-                owasp/zap2docker-stable zap-baseline.py \
-                -t $(DAST_TARGET_URL) \
-                -r zap_report.html || true
+              --network="host" \
+              -v "$(System.DefaultWorkingDirectory)/dast:/zap/wrk" \
+              -w /zap/wrk \
+              owasp/zap2docker-stable zap-baseline.py \
+              -t "$(DAST_TARGET_URL)" \
+              -r zap_report.html || true
             displayName: 'OWASP ZAP baseline scan (HTML report)'
+
+          - script: |
+              echo "Stopping local Spring app..."
+              pkill -f "org.springframework.boot" || true
+              pkill -f "spring-boot:run" || true
+              if command -v lsof >/dev/null 2>&1; then
+              PIDS=$(lsof -tiTCP:8080 -sTCP:LISTEN || true)
+              if [ -n "$PIDS" ]; then
+              echo "$PIDS" | xargs -r kill -9 || true
+              fi
+              fi
+            displayName: 'Cleanup — stop local Spring app'
+            condition: always()
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: zap-report.html'
@@ -600,7 +616,38 @@ stages:
               artifact: 'zap-report'
               publishLocation: 'pipeline'
 
-  # ---------------------------------------------------------------------------
+  # --- Stage 9: Secret Scanning (Gitleaks) ------------------------------------
+#  - stage: secret_scan
+#    displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
+#    dependsOn: security_scans
+#    condition: succeeded()
+#    jobs:
+#      - job: secrets
+#        displayName: 'Scan repo for secrets'
+#        pool:
+#          vmImage: 'ubuntu-latest'
+#        steps:
+#          - script: |
+#              echo "🔐 Installing Gitleaks (manual)..."
+#              curl -sSfL -o gitleaks.tar.gz \
+#                https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
+#              tar -xzf gitleaks.tar.gz gitleaks
+#              chmod +x gitleaks
+#              ./gitleaks version
+#
+#              echo "🔍 Scanning for secrets..."
+#              ./gitleaks detect --no-banner --source . --redact \
+#                --report-format json --report-path gitleaks-report.json \
+#                --exit-code 0
+#            displayName: 'Run Gitleaks secret scan'
+#
+#          - task: PublishPipelineArtifact@1
+#            displayName: 'Publish secret scan report'
+#            inputs:
+#              targetPath: 'gitleaks-report.json'
+#              artifact: 'secret-scan'
+#              publishLocation: 'pipeline'
+# ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
 #    pool:
