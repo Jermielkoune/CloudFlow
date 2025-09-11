@@ -612,7 +612,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: zap-report.html'
             inputs:
-              targetPath: '$(System.DefaultWorkingDirectory)/zap_report.html'
+              targetPath: '$(System.DefaultWorkingDirectory)/dast/zap_report.html'
               artifact: 'zap-report'
               publishLocation: 'pipeline'
 
