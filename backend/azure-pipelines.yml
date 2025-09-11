@@ -52,6 +52,14 @@ variables:
   - name: DAST_TARGET_URL
     value: 'http://localhost:8080'
 
+  # GitLeaks
+  - name: GITLEAKS_VERSION
+    value: '8.18.1'
+  - name: GITLEAKS_REPORT_JSON
+    value: 'gitleaks-report.json'
+  - name: GITLEAKS_REPORT_SARIF
+    value: 'gitleaks-report.sarif'
+
 stages:
   - stage: setup_toolchain
     displayName: 'Stage 1 — Pin JDK & Node'
@@ -638,36 +646,69 @@ stages:
               publishLocation: 'pipeline'
 
   # --- Stage 9: Secret Scanning (Gitleaks) ------------------------------------
-#  - stage: secret_scan
-#    displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
-#    dependsOn: security_scans
-#    condition: succeeded()
-#    jobs:
-#      - job: secrets
-#        displayName: 'Scan repo for secrets'
-#        pool:
-#          vmImage: 'ubuntu-latest'
-#        steps:
-#          - script: |
-#              echo "🔐 Installing Gitleaks (manual)..."
-#              curl -sSfL -o gitleaks.tar.gz \
-#                https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
-#              tar -xzf gitleaks.tar.gz gitleaks
-#              chmod +x gitleaks
-#              ./gitleaks version
-#
-#              echo "🔍 Scanning for secrets..."
-#              ./gitleaks detect --no-banner --source . --redact \
-#                --report-format json --report-path gitleaks-report.json \
-#                --exit-code 0
-#            displayName: 'Run Gitleaks secret scan'
-#
-#          - task: PublishPipelineArtifact@1
-#            displayName: 'Publish secret scan report'
-#            inputs:
-#              targetPath: 'gitleaks-report.json'
-#              artifact: 'secret-scan'
-#              publishLocation: 'pipeline'
+  - stage: secret_scan
+    displayName: 'Stage 9 — Secret Scanning (Gitleaks)'
+    dependsOn: security_scans
+    condition: succeeded()
+    jobs:
+      - job: gitleaks
+        displayName: 'Scan repo for secrets with Gitleaks'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - checkout: self
+            fetchDepth: 0   # 0 = full history; mets 1 si tu veux scanner seulement l’état courant
+
+          - script: |
+              set -euo pipefail
+              echo "Downloading Gitleaks v$(GITLEAKS_VERSION)…"
+              wget -q https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
+              tar -xf gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
+              # pas de sudo sur agents hosted : on garde le binaire local
+              chmod +x gitleaks
+              ./gitleaks version
+            displayName: 'Install Gitleaks (pinned)'
+
+          # 2) (Optionnel) Utiliser un fichier de config si présent (.gitleaks.toml)
+          #    On détecte automatiquement et on passe --config si le fichier existe.
+          - script: |
+              set -euo pipefail
+              EXTRA_ARGS=""
+              if [ -f ".gitleaks.toml" ]; then
+                echo "Found .gitleaks.toml → using as config"
+                EXTRA_ARGS="--config .gitleaks.toml"
+              fi
+              echo "Running Gitleaks detect… (redact on, JSON + SARIF reports)"
+              ./gitleaks detect --no-banner --redact \
+                --source . \
+                ${EXTRA_ARGS} \
+                --report-format json --report-path $(GITLEAKS_REPORT_JSON)
+              # produire aussi un SARIF pour outillage/ingestion ultérieure
+              ./gitleaks detect --no-banner --redact \
+                --source . \
+                ${EXTRA_ARGS} \
+                --report-format sarif --report-path $(GITLEAKS_REPORT_SARIF)
+            displayName: 'Run Gitleaks scan (JSON + SARIF)'
+            # 👉 Échec bloquant UNIQUEMENT sur main; ailleurs, on remonte l’info sans casser le build
+            continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
+
+          # 3) Publier les rapports comme artefacts de pipeline
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: gitleaks JSON'
+            inputs:
+              targetPath: '$(GITLEAKS_REPORT_JSON)'
+              artifact: 'gitleaks-json'
+              publishLocation: 'pipeline'
+            condition: exists('$(GITLEAKS_REPORT_JSON)')
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: gitleaks SARIF'
+            inputs:
+              targetPath: '$(GITLEAKS_REPORT_SARIF)'
+              artifact: 'gitleaks-sarif'
+              publishLocation: 'pipeline'
+            condition: exists('$(GITLEAKS_REPORT_SARIF)')
+
 # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
