@@ -1,0 +1,8 @@
+title = "CloudFlow Gitleaks Config"
+
+[allowlist]
+description = "Exclure tous les fichiers de test"
+paths = [
+  '''src/test/.*''',    # tout sous src/test/...
+  '''.*Test\.java$''', # tous les fichiers qui finissent par Test.java
+]
