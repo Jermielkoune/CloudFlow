@@ -911,8 +911,8 @@ stages:
       AZURE_FEED_URL: 'https://pkgs.dev.azure.com/sikaseal/cloudflow/_packaging/AZURE_CLOUDFLOW_FEED/maven/v1'
 
       # ── Publication ──────────────────────────────────────────────────────────
-      PUBLISH_DRY_RUN: 'false' # 'true' = build sans push (pour tests)
-      REVISION: '$(Build.BuildNumber)' # versioning piloté par pipeline
+      PUBLISH_DRY_RUN: 'false'
+      REVISION: '$(Build.BuildNumber)'
 
     jobs:
       - job: maven_deploy
@@ -957,44 +957,35 @@ stages:
             inputs:
               artifactsFeeds: '$(AZURE_FEED)'
 
-          # 3) Sanity + dériver l’URL si absente (utile pour -DaltDeploymentRepository)
+          # 3) Sanity (URL du feed)
           - script: |
-              set -e
-              echo "AZURE_FEED=$(AZURE_FEED)"
-              echo "AZURE_CROSS_ORG=$(AZURE_CROSS_ORG)"
-              if [ -z "$(AZURE_FEED_URL)" ]; then
-                echo "No AZURE_FEED_URL provided — relying on MavenAuthenticate mirrors."
-              else
-                echo "Using explicit AZURE_FEED_URL=$(AZURE_FEED_URL)"
-              fi
-            displayName: 'Sanity check (feed & URL)'
+              echo "Using AZURE_FEED=$(AZURE_FEED)"
+              echo "Using AZURE_FEED_URL=$(AZURE_FEED_URL)"
+              echo "Settings (macro) path: $(MAVEN_SETTINGS_PATH)"
+            displayName: 'Sanity check (feed & settings path)'
 
-          # 4) Build & Deploy
-          #    - On ne relance PAS les tests ici
-          #    - settings.xml temporaire vient de MavenAuthenticate
-          #    - serverId "azure-artifacts" déjà injecté → OK avec altDeploymentRepository
-          #
-          #    Mode DRY-RUN: si PUBLISH_DRY_RUN=true on n’envoie rien (deploy -DskipDeploy).
+          # 4) Build & Deploy (Option A: macros $(...) dans le script)
           - script: |
               set -e
-              # Sanity: le settings a été généré ?
-              test -f "${MAVEN_SETTINGS_PATH}" && echo "Using settings: ${MAVEN_SETTINGS_PATH}" || (echo "No MAVEN_SETTINGS_PATH"; exit 1)
+              echo "Settings file: $(MAVEN_SETTINGS_PATH)"
+              test -f "$(MAVEN_SETTINGS_PATH)" || { echo "settings not found"; exit 1; }
 
               ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::$(AZURE_FEED_URL)"
 
-              EXTRA_FLAGS=""
+              # Mode DRY-RUN
+              SKIP_DEPLOY=""
               if [ "$(PUBLISH_DRY_RUN)" = "true" ]; then
-              echo "DRY RUN → skipDeploy"
-              EXTRA_FLAGS="${EXTRA_FLAGS} -DskipDeploy=true"
+              echo "DRY RUN → will NOT push to feed"
+              SKIP_DEPLOY="-DskipDeploy=true"
               fi
 
               ./mvnw -B -ntp \
-                --settings "${MAVEN_SETTINGS_PATH}" \
+                --settings "$(MAVEN_SETTINGS_PATH)" \
                 -DskipTests=true -DskipITs=true \
                 -Drevision=$(REVISION) -Dchangelist= -Dsha1= \
                 -DretryFailedDeploymentCount=3 \
-                ${ALT_REPO_FLAG} ${EXTRA_FLAGS} \
-                clean deploy
+                ${ALT_REPO_FLAG} ${SKIP_DEPLOY} \
+              clean deploy
             workingDirectory: backend
             displayName: 'mvn clean deploy → Azure Artifacts'
 
