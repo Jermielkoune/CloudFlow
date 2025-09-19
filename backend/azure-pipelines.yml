@@ -897,6 +897,123 @@ stages:
               artifact: 'gitleaks-sarif'
               publishLocation: 'pipeline'
             condition: and(succeeded(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
+
+  # --- Stage 9: Publication Azure Artifacts (Maven) ----------------------------
+  - stage: publish_maven
+    displayName: 'Stage 9 — Publish to Azure Artifacts (Maven)'
+    dependsOn: secret_scan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+
+    variables:
+      # ── Paramétrage client ───────────────────────────────────────────────────
+      # Nom du feed Azure Artifacts (portée Projet de préférence)
+      AZURE_FEED: 'AZURE_CLOUDFLOW_FEED' #
+      AZURE_FEED_URL: 'https://pkgs.dev.azure.com/sikaseal/cloudflow/_packaging/AZURE_CLOUDFLOW_FEED/maven/v1'
+      AZURE_CROSS_ORG: 'false' # 'true' ou 'false'
+      AZURE_MAVEN_SC: '' # ex: acme-artifacts-maven-sc
+
+      # ── Publication ──────────────────────────────────────────────────────────
+      PUBLISH_DRY_RUN: 'false' # 'true' = build sans push (pour tests)
+      REVISION: '$(Build.BuildNumber)' # versioning piloté par pipeline
+
+    jobs:
+      - job: maven_deploy
+        displayName: 'Maven deploy → Azure Artifacts feed'
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          # 0) Tooling
+          - task: JavaToolInstaller@0
+            displayName: 'Set up Java $(JDK_VERSION)'
+            inputs:
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
+
+          - script: chmod +x mvnw
+            displayName: 'Fix exec bit for mvnw'
+            workingDirectory: backend
+
+          # 1) Caches Maven (accélère le deploy)
+          - script: |
+              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
+              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+            displayName: 'Compute Maven cache key (sha256)'
+
+          - task: Cache@2
+            displayName: 'Restore Maven repo (~/.m2/repository)'
+            inputs:
+              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
+              restoreKeys: |
+                maven | $(Agent.OS)
+              path: '$(HOME)/.m2/repository'
+
+          - task: Cache@2
+            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
+            inputs:
+              key: 'maven-wrapper | $(Agent.OS)'
+              path: '$(HOME)/.m2/wrapper'
+
+          # 2) Auth Maven vers Azure Artifacts
+          - task: MavenAuthenticate@0
+            displayName: 'Authenticate to Azure Artifacts (same org/project)'
+            condition: ne(variables.AZURE_CROSS_ORG, 'true')
+            inputs:
+              artifactsFeeds: '$(AZURE_FEED)'
+              mavenServiceConnections: '' # pas nécessaire dans ce cas
+
+          # 3) Sanity + dériver l’URL si absente (utile pour -DaltDeploymentRepository)
+          - script: |
+              set -e
+              echo "AZURE_FEED=$(AZURE_FEED)"
+              echo "AZURE_CROSS_ORG=$(AZURE_CROSS_ORG)"
+              if [ -z "$(AZURE_FEED_URL)" ]; then
+                echo "No AZURE_FEED_URL provided — relying on MavenAuthenticate mirrors."
+              else
+                echo "Using explicit AZURE_FEED_URL=$(AZURE_FEED_URL)"
+              fi
+            displayName: 'Sanity check (feed & URL)'
+
+          # 4) Build & Deploy
+          #    - On ne relance PAS les tests ici
+          #    - settings.xml temporaire vient de MavenAuthenticate
+          #    - serverId "azure-artifacts" déjà injecté → OK avec altDeploymentRepository
+          #
+          #    Mode DRY-RUN: si PUBLISH_DRY_RUN=true on n’envoie rien (deploy -DskipDeploy).
+          - script: |
+              set -e
+              SETTINGS_OPT=""
+              if [ -n "${MAVEN_SETTINGS_PATH:-}" ] && [ -f "${MAVEN_SETTINGS_PATH}" ]; then
+                echo "Using Maven settings at ${MAVEN_SETTINGS_PATH}"
+                SETTINGS_OPT="--settings ${MAVEN_SETTINGS_PATH}"
+              fi
+              EXTRA_FLAGS=""
+              if [ "$(PUBLISH_DRY_RUN)" = "true" ]; then
+                echo "DRY RUN ENABLED → will NOT push to feed"
+                EXTRA_FLAGS="${EXTRA_FLAGS} -DskipDeploy=true"
+              fi
+              ALT_REPO_FLAG=""
+              if [ -n "$(AZURE_FEED_URL)" ]; then
+                ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::$(AZURE_FEED_URL)"
+              fi
+              ./mvnw -B -ntp ${SETTINGS_OPT} -DskipTests=true -DskipITs=true \
+                -Drevision=$(REVISION) -Dchangelist= -Dsha1= \
+                -DretryFailedDeploymentCount=3 \
+                ${ALT_REPO_FLAG} ${EXTRA_FLAGS} clean deploy
+            workingDirectory: backend
+            displayName: 'mvn clean deploy → Azure Artifacts (with DRY-RUN option)'
+
+          # 5) Debug + Artefacts pipeline (pratique pour triage)
+          - script: |
+              echo "Produced files:"
+              ls -la backend/target || true
+            displayName: 'List target files (debug)'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish artifact: backend-target'
+            inputs:
+              targetPath: 'backend/target'
+              artifact: 'backend-target'
+              publishLocation: 'pipeline'
 # ---------------------------------------------------------------------------
 #jobs:
 #  - job: Test
