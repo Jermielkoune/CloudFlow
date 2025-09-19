@@ -961,33 +961,39 @@ stages:
           - script: |
               echo "Using AZURE_FEED=$(AZURE_FEED)"
               echo "Using AZURE_FEED_URL=$(AZURE_FEED_URL)"
-              echo "Settings (macro) path: $(MAVEN_SETTINGS_PATH)"
+              echo "Env MAVEN_SETTINGS_PATH=${MAVEN_SETTINGS_PATH:-<empty>}"
+              test -f "${MAVEN_SETTINGS_PATH}" && echo "settings found" || echo "settings missing"
             displayName: 'Sanity check (feed & settings path)'
+            env:
+              MAVEN_SETTINGS_PATH: $(MAVEN_SETTINGS_PATH)
 
-          # 4) Build & Deploy (Option A: macros $(...) dans le script)
+          # 4) Build & Deploy
           - script: |
               set -e
-              echo "Settings file: $(MAVEN_SETTINGS_PATH)"
-              test -f "$(MAVEN_SETTINGS_PATH)" || { echo "settings not found"; exit 1; }
+              test -f "${MAVEN_SETTINGS_PATH}" || { echo "settings not found"; exit 1; }
 
-              ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::$(AZURE_FEED_URL)"
+              ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::${AZURE_FEED_URL}"
 
-              # Mode DRY-RUN
               SKIP_DEPLOY=""
-              if [ "$(PUBLISH_DRY_RUN)" = "true" ]; then
+              if [ "${PUBLISH_DRY_RUN}" = "true" ]; then
               echo "DRY RUN → will NOT push to feed"
               SKIP_DEPLOY="-DskipDeploy=true"
               fi
 
               ./mvnw -B -ntp \
-                --settings "$(MAVEN_SETTINGS_PATH)" \
-                -DskipTests=true -DskipITs=true \
-                -Drevision=$(REVISION) -Dchangelist= -Dsha1= \
-                -DretryFailedDeploymentCount=3 \
-                ${ALT_REPO_FLAG} ${SKIP_DEPLOY} \
+              --settings "${MAVEN_SETTINGS_PATH}" \
+              -DskipTests=true -DskipITs=true \
+              -Drevision="${REVISION}" -Dchangelist= -Dsha1= \
+              -DretryFailedDeploymentCount=3 \
+              ${ALT_REPO_FLAG} ${SKIP_DEPLOY} \
               clean deploy
             workingDirectory: backend
             displayName: 'mvn clean deploy → Azure Artifacts'
+            env:
+              MAVEN_SETTINGS_PATH: $(MAVEN_SETTINGS_PATH)
+              AZURE_FEED_URL: $(AZURE_FEED_URL)
+              PUBLISH_DRY_RUN: $(PUBLISH_DRY_RUN)
+              REVISION: $(REVISION)
 
           # 5) Debug + Artefacts pipeline (pratique pour triage)
           - script: |
