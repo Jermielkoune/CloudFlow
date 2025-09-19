@@ -519,67 +519,70 @@ stages:
         displayName: 'SAST — OWASP Dependency-Check (Docker + SARIF)'
         pool: { vmImage: 'ubuntu-latest' }
         steps:
-          # Dossiers de travail (persistants dans le job)
-          - script: |
-              set -eu
-              echo "Workspace: $(System.DefaultWorkingDirectory)"
-              mkdir -p depcheck-data depcheck-reports
-              echo "##vso[task.setvariable variable=DEPCHK_DATA_DIR]$(System.DefaultWorkingDirectory)/depcheck-data"
-              echo "##vso[task.setvariable variable=DEPCHK_OUT_DIR]$(System.DefaultWorkingDirectory)/depcheck-reports"
-            displayName: 'Init folders for depcheck (data & reports)'
-
-          # Cache de la base NVD (accélère les runs suivants)
-          - task: Cache@2
-            displayName: 'Restore cache: depcheck data (NVD DB)'
+          - task: JavaToolInstaller@0
+            displayName: 'Set up Java $(JDK_VERSION)'
             inputs:
-              key: 'depcheck-data | $(Agent.OS)'
-              path: '$(DEPCHK_DATA_DIR)'
-              restoreKeys: |
-                depcheck-data | $(Agent.OS)
+              versionSpec: '$(JDK_VERSION)'
+              jdkArchitectureOption: 'x64'
+              jdkSourceOption: 'PreInstalled'
 
-          # Optionnel: suppression file s'il existe dans le repo
+          - script: chmod +x mvnw
+            displayName: 'Fix exec bit for mvnw'
+            workingDirectory: backend
+
+          #1) Cache maven
           - script: |
-              set -eu
-              cd backend
-              if [ -n "$(DEPCHK_SUPPRESSION)" ] && [ -f "$(DEPCHK_SUPPRESSION)" ]; then
-                echo "Suppression file detected: $(DEPCHK_SUPPRESSION)"
-                echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]--suppression $(DEPCHK_SUPPRESSION)"
+              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
+              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+            displayName: 'Compute Maven cache key (sha256)'
+
+          - task: Cache@2
+            displayName: 'Restore Maven repo (~/.m2/repository)'
+            inputs:
+              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
+              restoreKeys: |
+                maven | $(Agent.OS)
+              path: '$(HOME)/.m2/repository'
+
+          - task: Cache@2
+            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
+            inputs:
+              key: 'maven-wrapper | $(Agent.OS)'
+              path: '$(HOME)/.m2/wrapper'
+
+          # 2) Suppression file optionnel
+          - script: |
+              if [ -n "$(DEPCHK_SUPPRESSION)" ] && [ -f "backend/$(DEPCHK_SUPPRESSION)" ]; then
+                echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]-DsuppressionFile=$(DEPCHK_SUPPRESSION)"
+                echo "Using suppression file: $(DEPCHK_SUPPRESSION)"
               else
                 echo "No suppression file found or not set."
                 echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]"
               fi
             displayName: 'Detect optional suppression file'
+            workingDirectory: backend
 
-          # Lancer le scan en Docker (HTML + JSON) — fail seulement sur main
+          # 3) Scan fail seulement sur main
           - script: |
-              set +e
-              docker run --rm -t \
-                -v "$(System.DefaultWorkingDirectory)/backend:/src:ro" \
-                -v "$(DEPCHK_DATA_DIR):/usr/share/dependency-check/data" \
-                -v "$(DEPCHK_OUT_DIR):/report" \
-                $(DEPCHK_IMAGE) \
-                --scan /src \
-                --out /report \
-                --format HTML \
-                --format JSON \
-                --failOnCVSS $(DEPCHK_FAIL_CVSS) \
+              set -e
+              ./mvnw -B -ntp \
+                org.owasp:dependency-check-maven:$(DEPCHK_VERSION):check \
+                -DskipTests=true \
+                -Dformat=$(DEPCHK_FORMATS) \
+                -DfailOnCVSS=$(DEPCHK_FAIL_CVSS) \
                 $(DEPCHK_SUP_ARG)
-              EC=$?
-              echo "Dependency-Check exit code: $EC"
-              # Ne bloquer que sur main
-              if [ "$EC" -ne 0 ] && [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
-                exit $EC
-              fi
-              exit 0
-            displayName: 'Run OWASP Dependency-Check (Docker)'
+            workingDirectory: backend
+            displayName: 'Run OWASP Dependency-Check (CVSS ≥ $(DEPCHK_FAIL_CVSS))'
+            continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
 
-          # Convertir JSON -> SARIF (mini convertisseur inline Python)
+          # 4) Convertir JSON -> SARIF (inline python)
           - script: |
               set -eu
-              REPORT_JSON="$(DEPCHK_OUT_DIR)/dependency-check-report.json"
-              REPORT_SARIF="$(DEPCHK_OUT_DIR)/dependency-check-report.sarif"
+              REPORT_JSON="backend/target/dependency-check-report.json"
+              REPORT_SARIF="backend/target/dependency-check-report.sarif"
               if [ ! -f "$REPORT_JSON" ]; then
-                echo "No JSON report found at $REPORT_JSON"; exit 0
+                echo "No JSON report found at $REPORT_JSON — ensure DEPCHK_FORMATS contains JSON."
+                exit 0
               fi
               cat > depcheck_json_to_sarif.py << 'PY'
               import json, sys
@@ -636,13 +639,13 @@ stages:
               print(f"SARIF written to {dst}, findings: { len(results) }")
               PY
                 python3 depcheck_json_to_sarif.py "$REPORT_JSON" "$REPORT_SARIF" || true
-              displayName: 'Convert Dependency-Check JSON to SARIF'
+            displayName: 'Convert Dependency-Check JSON to SARIF'
 
           # Publier les rapports (HTML/JSON/SARIF) comme artefacts
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck HTML'
             inputs:
-              targetPath: '$(DEPCHK_OUT_DIR)/dependency-check-report.html'
+              targetPath: 'backend/target/dependency-check-report.html'
               artifact: 'depcheck-html'
               publishLocation: 'pipeline'
             condition: always()
@@ -650,7 +653,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck JSON'
             inputs:
-              targetPath: '$(DEPCHK_OUT_DIR)/dependency-check-report.json'
+              targetPath: 'backend/target/dependency-check-report.json'
               artifact: 'depcheck-json'
               publishLocation: 'pipeline'
             condition: always()
@@ -658,7 +661,7 @@ stages:
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck SARIF'
             inputs:
-              targetPath: '$(DEPCHK_OUT_DIR)/dependency-check-report.sarif'
+              targetPath: 'backend/target/dependency-check-report.sarif'
               artifact: 'depcheck-sarif'
               publishLocation: 'pipeline'
             condition: always()
