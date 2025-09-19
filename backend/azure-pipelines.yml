@@ -698,13 +698,13 @@ stages:
               publishLocation: 'pipeline'
             condition: always()
 
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: depcheck SARIF'
-            inputs:
-              targetPath: 'backend/target/dependency-check-report.sarif'
-              artifact: 'depcheck-sarif'
-              publishLocation: 'pipeline'
-            condition: always()
+      #          - task: PublishPipelineArtifact@1
+      #            displayName: 'Publish artifact: depcheck SARIF'
+      #            inputs:
+      #              targetPath: 'backend/target/dependency-check-report.sarif'
+      #              artifact: 'depcheck-sarif'
+      #              publishLocation: 'pipeline'
+      #            condition: always()
 
       # -------------------- DAST (OWASP ZAP) --------------------
       - job: dast_zap
