@@ -45,6 +45,8 @@ variables:
     value: ''
   - name: DEPCHK_FORMATS
     value: 'JSON'
+  - name: DEPCHK_VERSION
+    value: '12.1.1'
 
   # Snyk (SAST) pqyqnt et auotq grqtuit limité
   #  - name: SNYK_VERSION
