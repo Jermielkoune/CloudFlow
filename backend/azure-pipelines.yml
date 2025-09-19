@@ -47,6 +47,8 @@ variables:
     value: 'JSON'
   - name: DEPCHK_VERSION
     value: '12.1.1'
+  - name: DEPCHK_DATA_DIR
+    value: '$(Pipeline.Workspace)/depcheck-data'
 
   # Snyk (SAST) pqyqnt et auotq grqtuit limité
   #  - name: SNYK_VERSION
@@ -554,11 +556,14 @@ stages:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
+          - script: mkdir -p "$(DEPCHK_DATA_DIR)"
+            displayName: 'Ensure depcheck data dir exists'
+
           - task: Cache@2
             displayName: 'Restore Dependency-Check NVD data'
             inputs:
               key: 'depcheck-nvd | $(Agent.OS)'
-              path: '~/.m2/repository/org/owasp/dependency-check-data'
+              path: '$(DEPCHK_DATA_DIR)'
 
           # 2) Suppression file optionnel
           - script: |
@@ -607,7 +612,8 @@ stages:
                 -Danalyzer.swift.package.resolved.enabled=false \
                 -DossindexAnalyzerEnabled=false \
                 -DskipTestScope=true \
-                -DskipProvidedScope=true
+                -DskipProvidedScope=true \
+                -Ddata.dir=${DEPCHK_DATA_DIR}
             workingDirectory: backend
             displayName: 'Run OWASP Dependency-Check (CVSS ≥ $(DEPCHK_FAIL_CVSS))'
             continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
@@ -615,6 +621,7 @@ stages:
               DEPCHK_VERSION: $(DEPCHK_VERSION)
               DEPCHK_FORMATS: $(DEPCHK_FORMATS)
               DEPCHK_FAIL_CVSS: $(DEPCHK_FAIL_CVSS)
+              DEPCHK_DATA_DIR: $(DEPCHK_DATA_DIR)
               NVD_API_KEY: $(NVD_API_KEY)
 
           # 4) Convertir JSON -> SARIF (inline python)
