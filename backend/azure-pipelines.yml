@@ -43,6 +43,8 @@ variables:
     value: '7.0'
   - name: DEPCHK_SUPPRESSION
     value: ''
+  - name: DEPCHK_FORMATS
+    value: 'JSON'
 
   # Snyk (SAST) pqyqnt et auotq grqtuit limité
   #  - name: SNYK_VERSION
@@ -550,6 +552,13 @@ stages:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
+          - task: Cache@2
+            displayName: 'Restore Dependency-Check NVD data'
+            inputs:
+              key: 'depcheck-nvd | $(Agent.OS)'
+              path: '~/.m2/repository/org/owasp/dependency-check-data'
+
+
           # 2) Suppression file optionnel
           - script: |
               if [ -n "$(DEPCHK_SUPPRESSION)" ] && [ -f "backend/$(DEPCHK_SUPPRESSION)" ]; then
@@ -562,18 +571,51 @@ stages:
             displayName: 'Detect optional suppression file'
             workingDirectory: backend
 
+          - script: |
+              if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+                echo "##vso[task.setvariable variable=DC_UPDATE]true"
+              else
+                echo "##vso[task.setvariable variable=DC_UPDATE]false"
+              fi
+            displayName: 'Decide DC update (main=true, PR/feature=false)'
+
+
           # 3) Scan fail seulement sur main
           - script: |
               set -e
+              echo "Using DEPCHK_VERSION=$DEPCHK_VERSION"
+              echo "Using DEPCHK_FORMATS=$DEPCHK_FORMATS"
+              echo "Using DEPCHK_FAIL_CVSS=$DEPCHK_FAIL_CVSS"
+              echo "NVD API key present? $([ -n "${NVD_API_KEY:-}" ] && echo yes || echo no)"
+              echo "autoupdate (DC_UPDATE) = ${DC_UPDATE:-false}"
+
               ./mvnw -B -ntp \
                 org.owasp:dependency-check-maven:$(DEPCHK_VERSION):check \
                 -DskipTests=true \
                 -Dformat=$(DEPCHK_FORMATS) \
                 -DfailOnCVSS=$(DEPCHK_FAIL_CVSS) \
-                $(DEPCHK_SUP_ARG)
+                -Dnvd.api.key=${NVD_API_KEY} \
+                -Dautoupdate=${DC_UPDATE} \
+                -Danalyzer.retirejs.enabled=false \
+                -Danalyzer.node.enabled=false \
+                -Danalyzer.nuspec.enabled=false \
+                -Danalyzer.assembly.enabled=false \
+                -Danalyzer.pip.enabled=false \
+                -Danalyzer.php.composer.enabled=false \
+                -Danalyzer.ruby.gemspec.enabled=false \
+                -Danalyzer.cocoapods.enabled=false \
+                -Danalyzer.swift.package.resolved.enabled=false \
+                -DossindexAnalyzerEnabled=false \
+                -DskipTestScope=true \
+                -DskipProvidedScope=true
             workingDirectory: backend
             displayName: 'Run OWASP Dependency-Check (CVSS ≥ $(DEPCHK_FAIL_CVSS))'
             continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
+            env:
+                DEPCHK_VERSION: $(DEPCHK_VERSION)
+                DEPCHK_FORMATS: $(DEPCHK_FORMATS)
+                DEPCHK_FAIL_CVSS: $(DEPCHK_FAIL_CVSS)
+                NVD_API_KEY: $(NVD_API_KEY)
 
           # 4) Convertir JSON -> SARIF (inline python)
           - script: |
@@ -642,13 +684,13 @@ stages:
             displayName: 'Convert Dependency-Check JSON to SARIF'
 
           # Publier les rapports (HTML/JSON/SARIF) comme artefacts
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: depcheck HTML'
-            inputs:
-              targetPath: 'backend/target/dependency-check-report.html'
-              artifact: 'depcheck-html'
-              publishLocation: 'pipeline'
-            condition: always()
+#          - task: PublishPipelineArtifact@1
+#            displayName: 'Publish artifact: depcheck HTML'
+#            inputs:
+#              targetPath: 'backend/target/dependency-check-report.html'
+#              artifact: 'depcheck-html'
+#              publishLocation: 'pipeline'
+#            condition: always()
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck JSON'
