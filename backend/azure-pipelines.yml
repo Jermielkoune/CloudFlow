@@ -907,10 +907,8 @@ stages:
     variables:
       # ── Paramétrage client ───────────────────────────────────────────────────
       # Nom du feed Azure Artifacts (portée Projet de préférence)
-      AZURE_FEED: 'AZURE_CLOUDFLOW_FEED' #
+      AZURE_FEED: 'AZURE_CLOUDFLOW_FEED'
       AZURE_FEED_URL: 'https://pkgs.dev.azure.com/sikaseal/cloudflow/_packaging/AZURE_CLOUDFLOW_FEED/maven/v1'
-      AZURE_CROSS_ORG: 'false' # 'true' ou 'false'
-      AZURE_MAVEN_SC: '' # ex: acme-artifacts-maven-sc
 
       # ── Publication ──────────────────────────────────────────────────────────
       PUBLISH_DRY_RUN: 'false' # 'true' = build sans push (pour tests)
@@ -955,11 +953,9 @@ stages:
 
           # 2) Auth Maven vers Azure Artifacts
           - task: MavenAuthenticate@0
-            displayName: 'Authenticate to Azure Artifacts (same org/project)'
-            condition: ne(variables.AZURE_CROSS_ORG, 'true')
+            displayName: 'Authenticate to Azure Artifacts'
             inputs:
               artifactsFeeds: '$(AZURE_FEED)'
-              mavenServiceConnections: '' # pas nécessaire dans ce cas
 
           # 3) Sanity + dériver l’URL si absente (utile pour -DaltDeploymentRepository)
           - script: |
@@ -981,26 +977,26 @@ stages:
           #    Mode DRY-RUN: si PUBLISH_DRY_RUN=true on n’envoie rien (deploy -DskipDeploy).
           - script: |
               set -e
-              SETTINGS_OPT=""
-              if [ -n "${MAVEN_SETTINGS_PATH:-}" ] && [ -f "${MAVEN_SETTINGS_PATH}" ]; then
-                echo "Using Maven settings at ${MAVEN_SETTINGS_PATH}"
-                SETTINGS_OPT="--settings ${MAVEN_SETTINGS_PATH}"
-              fi
+              # Sanity: le settings a été généré ?
+              test -f "${MAVEN_SETTINGS_PATH}" && echo "Using settings: ${MAVEN_SETTINGS_PATH}" || (echo "No MAVEN_SETTINGS_PATH"; exit 1)
+
+              ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::$(AZURE_FEED_URL)"
+
               EXTRA_FLAGS=""
               if [ "$(PUBLISH_DRY_RUN)" = "true" ]; then
-                echo "DRY RUN ENABLED → will NOT push to feed"
-                EXTRA_FLAGS="${EXTRA_FLAGS} -DskipDeploy=true"
+              echo "DRY RUN → skipDeploy"
+              EXTRA_FLAGS="${EXTRA_FLAGS} -DskipDeploy=true"
               fi
-              ALT_REPO_FLAG=""
-              if [ -n "$(AZURE_FEED_URL)" ]; then
-                ALT_REPO_FLAG="-DaltDeploymentRepository=azure-artifacts::default::$(AZURE_FEED_URL)"
-              fi
-              ./mvnw -B -ntp ${SETTINGS_OPT} -DskipTests=true -DskipITs=true \
+
+              ./mvnw -B -ntp \
+                --settings "${MAVEN_SETTINGS_PATH}" \
+                -DskipTests=true -DskipITs=true \
                 -Drevision=$(REVISION) -Dchangelist= -Dsha1= \
                 -DretryFailedDeploymentCount=3 \
-                ${ALT_REPO_FLAG} ${EXTRA_FLAGS} clean deploy
+                ${ALT_REPO_FLAG} ${EXTRA_FLAGS} \
+                clean deploy
             workingDirectory: backend
-            displayName: 'mvn clean deploy → Azure Artifacts (with DRY-RUN option)'
+            displayName: 'mvn clean deploy → Azure Artifacts'
 
           # 5) Debug + Artefacts pipeline (pratique pour triage)
           - script: |
