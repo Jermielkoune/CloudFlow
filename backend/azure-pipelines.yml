@@ -558,7 +558,6 @@ stages:
               key: 'depcheck-nvd | $(Agent.OS)'
               path: '~/.m2/repository/org/owasp/dependency-check-data'
 
-
           # 2) Suppression file optionnel
           - script: |
               if [ -n "$(DEPCHK_SUPPRESSION)" ] && [ -f "backend/$(DEPCHK_SUPPRESSION)" ]; then
@@ -578,7 +577,6 @@ stages:
                 echo "##vso[task.setvariable variable=DC_UPDATE]false"
               fi
             displayName: 'Decide DC update (main=true, PR/feature=false)'
-
 
           # 3) Scan fail seulement sur main
           - script: |
@@ -612,10 +610,10 @@ stages:
             displayName: 'Run OWASP Dependency-Check (CVSS ≥ $(DEPCHK_FAIL_CVSS))'
             continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
             env:
-                DEPCHK_VERSION: $(DEPCHK_VERSION)
-                DEPCHK_FORMATS: $(DEPCHK_FORMATS)
-                DEPCHK_FAIL_CVSS: $(DEPCHK_FAIL_CVSS)
-                NVD_API_KEY: $(NVD_API_KEY)
+              DEPCHK_VERSION: $(DEPCHK_VERSION)
+              DEPCHK_FORMATS: $(DEPCHK_FORMATS)
+              DEPCHK_FAIL_CVSS: $(DEPCHK_FAIL_CVSS)
+              NVD_API_KEY: $(NVD_API_KEY)
 
           # 4) Convertir JSON -> SARIF (inline python)
           - script: |
@@ -684,13 +682,13 @@ stages:
             displayName: 'Convert Dependency-Check JSON to SARIF'
 
           # Publier les rapports (HTML/JSON/SARIF) comme artefacts
-#          - task: PublishPipelineArtifact@1
-#            displayName: 'Publish artifact: depcheck HTML'
-#            inputs:
-#              targetPath: 'backend/target/dependency-check-report.html'
-#              artifact: 'depcheck-html'
-#              publishLocation: 'pipeline'
-#            condition: always()
+          #          - task: PublishPipelineArtifact@1
+          #            displayName: 'Publish artifact: depcheck HTML'
+          #            inputs:
+          #              targetPath: 'backend/target/dependency-check-report.html'
+          #              artifact: 'depcheck-html'
+          #              publishLocation: 'pipeline'
+          #            condition: always()
 
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck JSON'
