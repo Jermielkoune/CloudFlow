@@ -155,7 +155,7 @@ Or build a arm64 Docker image when using an arm64 processor os like MacOS with M
 npm run java:docker:arm64
 ```
 
-Then run:
+Then run :
 
 ```sh
 docker compose -f src/main/docker/app.yml up -d
