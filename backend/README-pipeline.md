@@ -1,6 +1,6 @@
 # CloudFlow Backend — CI/CD Azure Pipelines (Guide d'architecture et d'exploitation)
 
-Ce document explique clairement au lead ce qui a été mis en place pour la CI/CD du backend CloudFlow (Java + Spring Boot + Maven) sur Azure Pipelines, pourquoi ces choix, ce que chaque stage apporte, et ce qu'il reste à faire pour une chaîne complète, professionnelle et industrialisable.
+Ce document explique clairement ce qui a été mis en place pour la CI/CD du backend CloudFlow (Java + Spring Boot + Maven) sur Azure Pipelines, pourquoi ces choix, ce que chaque stage apporte, et ce qu'il reste à faire pour une chaîne complète, professionnelle et industrialisable.
 
 ## 1) Contexte du projet et choix techniques
 
