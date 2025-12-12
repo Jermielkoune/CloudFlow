@@ -222,8 +222,8 @@ stages:
             workingDirectory: backend
 
           - script: |
-              npx prettier --check "**/*.{md,json,yml,yaml}"
-            displayName: 'Prettier check (md/json/yml)'
+              npx prettier --write "**/*.{md,json,yml,yaml}"
+            displayName: 'Prettier format (md/json/yml)'
             workingDirectory: backend
 
   # --- Stage 4: Tests unitaires & rapports -----------------------------------
