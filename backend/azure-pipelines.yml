@@ -114,10 +114,11 @@ stages:
     jobs:
       - job: pin_tools
         displayName: 'Pin JDK & Node'
+        defaults:
+          run:
+            workingDirectory: backend
         steps:
           - checkout: self
-          - default:
-              workingDirectory: backend
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
@@ -149,10 +150,11 @@ stages:
     jobs:
       - job: fast_checks
         displayName: 'Pin tools → Restore caches → Prime deps → Quality checks'
+        defaults:
+          run:
+            workingDirectory: backend
         steps:
           - checkout: self
-          - default:
-              workingDirectory: backend
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
