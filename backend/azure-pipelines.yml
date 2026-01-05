@@ -1,5 +1,5 @@
 # --- STAGE 1: Triggers & Filters -------------------------------------------
-# CI : Déclenchement de la CI sur Azure Pipelines/ GitHub Actions pour le module backend
+# CI : Déclenchement de la CI sur Azure Pipelines pour le module backend
 # Les runs sont limités aux changements pertinents côté Java/Maven
 # On active un mode batch dans la section trigger pour regrouper les commits rapprochés et n'exécuter qu'un seul run
 # Le filtrage par chemin concentre la CI sur les fichiers Java/Maven
@@ -52,7 +52,7 @@ variables:
 
   #--------------------------
   # OWASP Dependency-Check (Docker)
-  # C'est un outil de type SCA (Software Composition Analysis) qui analysera les dépendances Maven/NPM/Gradle
+  # C'est un outil de type SCA (Software Composition Analysis) qui analysera les dépendances Maven/NPM
   # et identifie les vulnérabilités
 
   # Quel conteneur docker utilisé ?
@@ -110,10 +110,12 @@ stages:
     # On rend notre build déterministe en verouillant le toolchain dès le début de la pipeline
     # les raisons : diagnostiquer rapidement un problème d'installation & eviter de lancer toute la
     # pipeline : fail fast, bonne pratique devops
-    displayName: 'Stage 1 — Pin JDK & Node'
+    displayName: 'Stage 1 - Pin JDK & Node'
     jobs:
       - job: pin_tools
-        displayName: 'Pin JDK $(JDK_VERSION) & Node $(NODE_VERSION)'
+        displayName: 'Pin JDK & Node'
+        defaults:
+          workingDirectory: backend
         steps:
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION) (x64)'
@@ -126,11 +128,10 @@ stages:
               echo "JAVA_HOME=$JAVA_HOME"
               java -version
               ./mvnw -v
-            displayName: 'Verify Java & Maven'
-            workingDirectory: backend
+            displayName: 'Verify Java & Maven version'
 
           - task: NodeTool@0
-            displayName: 'Use Node $(NODE_VERSION)'
+            displayName: 'Set up Node $(NODE_VERSION)'
             inputs:
               versionSpec: '$(NODE_VERSION)'
           - script: |
@@ -138,19 +139,19 @@ stages:
               npm -v
               npm ci
               npm run backend:info
-            displayName: 'Verify Node/npm + run a script'
-            workingDirectory: backend
+            displayName: 'Verify Node/npm env'
 
   # --- Stage 2+3: Caches + Quality gates (Spotless, Checkstyle, Prettier) ---
   - stage: deps_and_quality
-    #
-    displayName: 'Stage 2+3 — Caches + Quality gates'
+    displayName: 'Stage 2 - Caches + Quality gates'
     dependsOn: setup_toolchain
     jobs:
       - job: fast_checks
         displayName: 'Pin tools → Restore caches → Prime deps → Quality checks'
+        defaults:
+          workingDirectory: backend
         steps:
-          # 0) Pin JDK & Node dans ce job (chaque job a sa VM)
+          # 0) Pin JDK & Node
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
@@ -159,7 +160,7 @@ stages:
               jdkSourceOption: 'PreInstalled'
 
           - task: NodeTool@0
-            displayName: 'Use Node $(NODE_VERSION)'
+            displayName: 'Set up Node $(NODE_VERSION)'
             inputs:
               versionSpec: '$(NODE_VERSION)'
 
@@ -204,37 +205,31 @@ stages:
           - script: |
               ./mvnw -ntp -B dependency:go-offline
             displayName: 'Prime Maven deps (go-offline)'
-            workingDirectory: backend
 
           - script: npm ci
             displayName: 'Prime npm cache (npm ci)'
-            workingDirectory: backend
 
           # 4) Gates de formatage/qualité (fail-fast)
           - script: |
               ./mvnw -ntp -B spotless:check
             displayName: 'Spotless check (Java)'
-            workingDirectory: backend
 
           - script: |
               ./mvnw -ntp -B -DskipTests=true checkstyle:check
             displayName: 'Checkstyle check (Java)'
-            workingDirectory: backend
 
           - script: |
               npx prettier --write "**/*.{md,json,yml,yaml}"
             displayName: 'Prettier format (md/json/yml)'
-            workingDirectory: backend
 
   # --- Stage 4: Tests unitaires & rapports -----------------------------------
   - stage: unit_tests
-    displayName: 'Stage 4 — Tests unitaires & rapports'
+    displayName: 'Stage 4 - Tests unitaires & rapports'
     dependsOn: deps_and_quality
     jobs:
       - job: run_unit_tests
-        displayName: 'Run unit tests (Surefire) + publish reports'
+        displayName: 'Run unit tests + publish reports'
         steps:
-          # 0) Pin JDK 17 (VM neuve à chaque job)
           - task: JavaToolInstaller@0
             displayName: 'Set up Java $(JDK_VERSION) (x64)'
             inputs:
@@ -242,7 +237,6 @@ stages:
               jdkArchitectureOption: 'x64'
               jdkSourceOption: 'PreInstalled'
 
-          # 1) Recompute cache keys (sha du pom)
           - script: |
               echo "Compute cache key for Maven…"
               MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
@@ -250,7 +244,6 @@ stages:
               echo "MAVEN_CACHE_KEY=$MAVEN_KEY"
             displayName: 'Compute Maven cache key (sha256)'
 
-          # 2) Restore Maven caches
           - task: Cache@2
             displayName: 'Restore Maven repo (~/.m2/repository)'
             inputs:
@@ -265,10 +258,10 @@ stages:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
-          # 3) Run unit tests (Surefire) — JaCoCo report généré au phase 'test'
+          # 3) Run unit tests
           - script: |
               ./mvnw -B -ntp clean test
-            displayName: 'Maven unit tests (Surefire)'
+            displayName: 'Maven unit tests'
             workingDirectory: backend
 
           # 4) Publier les résultats JUnit (Surefire)
@@ -308,14 +301,16 @@ stages:
 
   # --- Stage 5: SonarCloud (no extension, reuse tests, block on QG) ---------
   - stage: quality_gate
-    displayName: 'Stage 5 — SonarCloud (Quality Gate, no extensions)'
+    displayName: 'Stage 5 - SonarCloud (Quality Gate)'
     dependsOn: unit_tests
     condition: succeeded()
     jobs:
       - job: sonar_analysis
-        displayName: 'Compile (no tests) -> Sonar -> Block on QG'
+        displayName: 'Compile -> Sonar -> Block on QG'
         pool:
           vmImage: 'ubuntu-latest'
+        variables:
+          SONAR_TOKEN: $(SONAR_TOKEN)
         steps:
           # Java 17
           - task: JavaToolInstaller@0
@@ -343,7 +338,6 @@ stages:
               key: 'maven-wrapper | $(Agent.OS)'
               path: '$(HOME)/.m2/wrapper'
 
-          # Rapports tests/couverture depuis le stage "unit_tests"
           - task: DownloadPipelineArtifact@2
             displayName: 'Download JaCoCo report'
             inputs:
@@ -356,9 +350,9 @@ stages:
               path: 'backend/target/surefire-reports'
 
           # Compile sans tests (fournit target/classes pour règles Java)
-          - script: ./mvnw -B -ntp -DskipTests=true -DskipITs=true package
+          - script: ./mvnw -B -ntp -Pprod -DskipTests=true -DskipITs=true package
             workingDirectory: backend
-            displayName: 'Compile only (no tests)'
+            displayName: 'Compile only'
 
           - script: |
               if [ -z "${SONAR_TOKEN}" ]; then
@@ -366,8 +360,6 @@ stages:
               fi
               echo "✅ SONAR_TOKEN is set (length: ${#SONAR_TOKEN})"
             displayName: 'Sanity check: SONAR_TOKEN presence'
-            env:
-              SONAR_TOKEN: $(SONAR_TOKEN)
 
           # Analyse Sonar via Maven (utilise sonar-project.properties)
           - script: |
@@ -382,8 +374,6 @@ stages:
                 -Dsonar.junit.reportPaths=target/surefire-reports
             workingDirectory: backend
             displayName: 'Run Sonar analysis (Maven + properties file)'
-            env:
-              SONAR_TOKEN: $(SONAR_TOKEN)
 
           # Blocage Quality Gate via API SonarCloud (branche courante)
           - script: |
@@ -404,16 +394,15 @@ stages:
               done
               echo "Quality Gate timeout"; exit 2
             displayName: 'Block on Quality Gate (poll SonarCloud)'
-            env:
-              SONAR_TOKEN: $(SONAR_TOKEN)
             condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+
   # --- Stage 6: Tests d’intégration ---------------------------
   - stage: integration_tests
-    displayName: 'Stage 6 — Tests d’intégration (ephemeral)'
+    displayName: 'Stage 6 - Tests d’intégration'
     dependsOn: quality_gate
     condition: succeeded()
     variables:
-      USE_COMPOSE: 'false' # 'true' pour démarrer docker compose (DB externe)
+      USE_COMPOSE: 'true' # 'true' pour démarrer docker compose (DB externe)
     jobs:
       - job: itests
         displayName: 'Run Failsafe ITs + publish reports'
@@ -458,7 +447,6 @@ stages:
               echo "Starting docker compose (PostgreSQL)…"
               docker compose -f src/main/docker/postgresql.yml up -d
               echo "Waiting for DB health..."
-              # suppose que le service s'appelle 'postgresql' (JHipster standard)
               CID="$(docker compose -f src/main/docker/postgresql.yml ps -q postgresql || true)"
               if [ -z "$CID" ]; then
                 echo "WARN: container id not found, sleep 20s"
@@ -475,13 +463,10 @@ stages:
             displayName: '(optional) Compose up: PostgreSQL'
             condition: eq(variables['USE_COMPOSE'], 'true')
 
-          # 3) Lancer UNIQUEMENT les IT (Failsafe)
-          #    -DskipTests=true   => skip Surefire (unit)
-          #    verify (Failsafe)  => run ITs (**/*IT*|*IntTest*) + post-rapport
           - script: |
               ./mvnw -B -ntp -DskipTests=true verify
             workingDirectory: backend
-            displayName: 'Maven integration tests (Failsafe)'
+            displayName: 'Maven integration tests '
 
           # Debug: voir ce qui a été produit
           - script: |
@@ -550,7 +535,7 @@ stages:
 
   # --- Stage 7: Security scans (SAST & optional DAST) -------------------------
   - stage: security_scans
-    displayName: 'Stage 7 — Security scans (SAST & optional DAST)'
+    displayName: 'Stage 7 - Security scans (SAST & optional DAST)'
     dependsOn: integration_tests
     condition: succeeded()
     jobs:
@@ -724,15 +709,6 @@ stages:
                 python3 depcheck_json_to_sarif.py "$REPORT_JSON" "$REPORT_SARIF" || true
             displayName: 'Convert Dependency-Check JSON to SARIF'
 
-          # Publier les rapports (HTML/JSON/SARIF) comme artefacts
-          #          - task: PublishPipelineArtifact@1
-          #            displayName: 'Publish artifact: depcheck HTML'
-          #            inputs:
-          #              targetPath: 'backend/target/dependency-check-report.html'
-          #              artifact: 'depcheck-html'
-          #              publishLocation: 'pipeline'
-          #            condition: always()
-
           - task: PublishPipelineArtifact@1
             displayName: 'Publish artifact: depcheck JSON'
             inputs:
@@ -740,14 +716,6 @@ stages:
               artifact: 'depcheck-json'
               publishLocation: 'pipeline'
             condition: always()
-
-      #          - task: PublishPipelineArtifact@1
-      #            displayName: 'Publish artifact: depcheck SARIF'
-      #            inputs:
-      #              targetPath: 'backend/target/dependency-check-report.sarif'
-      #              artifact: 'depcheck-sarif'
-      #              publishLocation: 'pipeline'
-      #            condition: always()
 
       # -------------------- DAST (OWASP ZAP) --------------------
       - job: dast_zap
@@ -822,7 +790,7 @@ stages:
               publishLocation: 'pipeline'
 
   - stage: secret_scan
-    displayName: 'Stage 8 — Secret Scanning (Gitleaks)'
+    displayName: 'Stage 8 - Secret Scanning'
     dependsOn: security_scans
     condition: succeeded()
     jobs:

@@ -6,7 +6,7 @@
 target/
 .mvn/wrapper/maven-wrapper.jar
 
-# Node / Frontend
+# Node
 node_modules/
 dist/
 coverage/
@@ -21,12 +21,6 @@ backend/target/
 backend/.classpath
 backend/.project
 backend/.settings/
-
-# Frontend (Node/Angular)
-frontend/node_modules/
-frontend/dist/
-frontend/.angular/
-frontend/.env.local
 
 # Modeling (Eclipse EMF)
 modeling/bin/
