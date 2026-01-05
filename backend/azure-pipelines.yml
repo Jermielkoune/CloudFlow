@@ -114,9 +114,6 @@ stages:
     jobs:
       - job: pin_tools
         displayName: 'Pin JDK & Node'
-        defaults:
-          run:
-            workingDirectory: backend
         steps:
           - checkout: self
           - task: JavaToolInstaller@0
@@ -131,6 +128,7 @@ stages:
               java -version
               ./mvnw -v
             displayName: 'Verify Java & Maven version'
+            workingDirectory: backend
 
           - task: NodeTool@0
             displayName: 'Set up Node $(NODE_VERSION)'
@@ -142,6 +140,7 @@ stages:
               npm ci
               npm run backend:info
             displayName: 'Verify Node/npm env'
+            workingDirectory: backend
 
   # --- Stage 2+3: Caches + Quality gates (Spotless, Checkstyle, Prettier) ---
   - stage: deps_and_quality
@@ -150,9 +149,6 @@ stages:
     jobs:
       - job: fast_checks
         displayName: 'Pin tools → Restore caches → Prime deps → Quality checks'
-        defaults:
-          run:
-            workingDirectory: backend
         steps:
           - checkout: self
           - task: JavaToolInstaller@0
@@ -208,22 +204,27 @@ stages:
           - script: |
               ./mvnw -ntp -B dependency:go-offline
             displayName: 'Prime Maven deps (go-offline)'
+            workingDirectory: backend
 
           - script: npm ci
             displayName: 'Prime npm cache (npm ci)'
+            workingDirectory: backend
 
           # 4) Gates de formatage/qualité (fail-fast)
           - script: |
               ./mvnw -ntp -B spotless:check
             displayName: 'Spotless check (Java)'
+            workingDirectory: backend
 
           - script: |
               ./mvnw -ntp -B -DskipTests=true checkstyle:check
             displayName: 'Checkstyle check (Java)'
+            workingDirectory: backend
 
           - script: |
               npx prettier --write "**/*.{md,json,yml,yaml}"
             displayName: 'Prettier format (md/json/yml)'
+            workingDirectory: backend
 
   # --- Stage 4: Tests unitaires & rapports -----------------------------------
   - stage: unit_tests
