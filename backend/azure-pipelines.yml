@@ -114,7 +114,7 @@ stages:
     jobs:
       - job: pin_tools
         displayName: 'Pin JDK & Node'
-        defaults:
+        default:
           workingDirectory: backend
         steps:
           - task: JavaToolInstaller@0
@@ -148,7 +148,7 @@ stages:
     jobs:
       - job: fast_checks
         displayName: 'Pin tools → Restore caches → Prime deps → Quality checks'
-        defaults:
+        default:
           workingDirectory: backend
         steps:
           # 0) Pin JDK & Node
