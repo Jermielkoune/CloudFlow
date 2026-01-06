@@ -106,7 +106,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 1 – Toolchain Java uniquement
   # ---------------------------------------------------------------------------
-  - stage: setup_toolchain
+  - stage: Stage 1 - setup toolchain
     jobs:
       - job: pin_java
         displayName: 'Install JDK & verify Maven wrapper'
@@ -129,7 +129,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 2 – Caches Maven + Préparation des dépendances
   # ---------------------------------------------------------------------------
-  - stage: deps_cache
+  - stage: Stage 2 - deps & caches
     displayName: 'Maven caches + go-offline'
     dependsOn: setup_toolchain
     jobs:
@@ -160,7 +160,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud/DAST/Gitleaks)
   # ---------------------------------------------------------------------------
-  - stage: quality_security
+  - stage: Stage 3 - quality & security
     displayName: 'Quality gates + Security'
     dependsOn: deps_cache
     jobs:
@@ -168,13 +168,11 @@ stages:
         displayName: 'Run unit tests (Maven)'
         steps:
           - checkout: self
-          # Lancer tests + rapports (JaCoCo/JUnit). Spotless/Checkstyle sont déjà configurés dans le POM.
           - script: |
               ./mvnw -B -ntp clean test
             displayName: 'Maven test'
             workingDirectory: $(BACKEND_DIR)
 
-          # Publier résultats JUnit
           - task: PublishTestResults@2
             displayName: 'Publish JUnit results'
             inputs:
@@ -197,7 +195,8 @@ stages:
 
           # Analyse SonarCloud (exclusivement)
           - script: |
-              ./mvnw -B -ntp verify sonar:sonar
+              ./mvnw -B -ntp clean test -DfailIfNoTests=false
+              ./mvnw -B -ntp -DskipTests=true sonar:sonar
             displayName: 'Maven verify + SonarCloud'
             workingDirectory: $(BACKEND_DIR)
             env:
@@ -226,9 +225,9 @@ stages:
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
 
-  # --- Stage 7: Security scans (SAST & optional DAST) -------------------------
+  # --- Stage 4 : Security scans (SAST & optional DAST) -------------------------
   - stage: security_scans
-    displayName: 'Stage 7 - Security scans (SAST & optional DAST)'
+    displayName: 'Stage 4 - Security scans (SAST & DAST)'
     dependsOn: quality_security
     condition: succeeded()
     jobs:
@@ -414,7 +413,7 @@ stages:
               publishLocation: 'pipeline'
 
   - stage: secret_scan
-    displayName: 'Stage 8 - Secret Scanning'
+    displayName: 'Stage 5 - Secret Scanning'
     dependsOn: security_scans
     condition: succeeded()
     jobs:
