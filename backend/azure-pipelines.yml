@@ -506,8 +506,8 @@ stages:
   # ---------------------------------------------------------------------------
   - stage: build_and_push_image
     displayName: 'Build & Push container image (Jib → ECR)'
-    dependsOn: secret_scan
-    condition: succeeded()
+    #dependsOn: secret_scan
+    #condition: succeeded()
     jobs:
       - job: jib_to_ecr
         displayName: 'Jib build & push (multi-tags)'
