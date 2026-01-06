@@ -516,7 +516,7 @@ stages:
             workingDirectory: $(BACKEND_DIR)
 
           # Authentifier la session AWS via la Service Connection
-          - task: AmazonWebServicesAuthenticate@1
+          - task: AWSCLI@1
             displayName: 'AWS Authenticate (Service Connection)'
             inputs:
               awsCredentials: '$(AWS_SERVICE_CONNECTION)'
