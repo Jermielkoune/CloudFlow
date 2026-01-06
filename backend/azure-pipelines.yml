@@ -517,53 +517,26 @@ stages:
             displayName: 'Fix exec bit for mvnw'
             workingDirectory: $(BACKEND_DIR)
 
-          # Récupérer l'ACCOUNT_ID via AWSCLI@1 et composer le registre ECR
-          - task: AWSCLI@1
-            displayName: 'Get AWS Account ID'
+          # Récupérer l'ACCOUNT_ID AWS et composer le registre ECR
+          - task: AWSShellScript@1
+            displayName: 'Get AWS Account ID and set ECR_REGISTRY'
             inputs:
               awsCredentials: '$(AWS_SERVICE_CONNECTION)'
               regionName: '$(AWS_REGION)'
-              awsCommand: 'sts'
-              awsSubCommand: 'get-caller-identity'
-              awsArguments: '--query Account --output text'
-              failOnStandardError: true
-          - script: |
-              set -e
-              # Lire l'Account ID depuis le fichier de sortie de la tâche AWSCLI@1
-              ACCOUNT_ID=$(cat $(System.DefaultWorkingDirectory)/aws_cli_output.txt | tr -d '[:space:]')
-              if [ -z "$ACCOUNT_ID" ]; then
-                echo "##[error]Failed to retrieve AWS Account ID from aws_cli_output.txt"
-                exit 1
-              fi
-              echo "AWS Account ID: $ACCOUNT_ID"
-              ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.$(AWS_REGION).amazonaws.com"
-              echo "ECR Registry: $ECR_REGISTRY"
-              echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
-            displayName: 'Set ECR_REGISTRY variable'
+              scriptType: 'inline'
+              inlineScript: |
+                set -e
+                ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text | tr -d '[:space:]')
+                if [ -z "$ACCOUNT_ID" ]; then
+                  echo "##[error]Failed to retrieve AWS Account ID"
+                  exit 1
+                fi
+                echo "AWS Account ID: $ACCOUNT_ID"
+                ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.$(AWS_REGION).amazonaws.com"
+                echo "ECR Registry: $ECR_REGISTRY"
+                echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
 
-          # S’assurer que le repo ECR existe (encapsulé via AWSCLI@1)
-          - task: AWSCLI@1
-            displayName: 'Ensure ECR repository exists'
-            inputs:
-              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-              regionName: '$(AWS_REGION)'
-              awsCommand: 'ecr'
-              awsSubCommand: 'describe-repositories'
-              awsArguments: '--repository-names "$(ECR_REPOSITORY)"'
-              failOnStandardError: false
-            condition: succeededOrFailed()
-          - task: AWSCLI@1
-            displayName: 'Create ECR repository if missing'
-            inputs:
-              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-              regionName: '$(AWS_REGION)'
-              awsCommand: 'ecr'
-              awsSubCommand: 'create-repository'
-              awsArguments: '--repository-name "$(ECR_REPOSITORY)" --image-scanning-configuration scanOnPush=false'
-              failOnStandardError: false
-            condition: failed()
-
-          # Extraire la version de l’application depuis pom.xml et définir les variables demandées
+          # Extraire la version de l'application depuis pom.xml et définir les variables demandées
           - script: |
               set -e
               VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
@@ -580,26 +553,21 @@ stages:
             displayName: 'Resolve tags (version, buildId, branch)'
             workingDirectory: $(BACKEND_DIR)
 
-          # Obtenir le mot de passe ECR (token temporaire) pour Jib via AWSCLI@1
-          - task: AWSCLI@1
-            displayName: 'Fetch ECR login password'
+          # Obtenir le mot de passe ECR (token temporaire) pour Jib
+          - task: AWSShellScript@1
+            displayName: 'Get ECR login password and set ECR_PASSWORD'
             inputs:
               awsCredentials: '$(AWS_SERVICE_CONNECTION)'
               regionName: '$(AWS_REGION)'
-              awsCommand: 'ecr'
-              awsSubCommand: 'get-login-password'
-              awsArguments: ''
-              failOnStandardError: true
-          - script: |
-              set -e
-              # Le task AWSCLI@1 écrit la sortie dans aws_cli_output.txt
-              PASSWORD=$(cat $(System.DefaultWorkingDirectory)/aws_cli_output.txt)
-              if [ -z "$PASSWORD" ]; then
-                echo "##[error]Failed to retrieve ECR password from aws_cli_output.txt"
-                exit 1
-              fi
-              echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
-            displayName: 'Set ECR_PASSWORD variable'
+              scriptType: 'inline'
+              inlineScript: |
+                set -e
+                PASSWORD=$(aws ecr get-login-password)
+                if [ -z "$PASSWORD" ]; then
+                  echo "##[error]Failed to retrieve ECR password"
+                  exit 1
+                fi
+                echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
 
           # Construire et pousser l’image via Jib avec multi-tags (appel unique)
           - script: |
