@@ -517,36 +517,27 @@ stages:
             displayName: 'Fix exec bit for mvnw'
             workingDirectory: $(BACKEND_DIR)
 
-          # Authentifier et vérifier l’identité AWS via Service Connection
+          # Récupérer l'ACCOUNT_ID via AWSCLI@1 et composer le registre ECR
           - task: AWSCLI@1
-            displayName: 'AWS Authenticate (get-caller-identity)'
+            displayName: 'Get AWS Account ID'
             inputs:
               awsCredentials: '$(AWS_SERVICE_CONNECTION)'
               regionName: '$(AWS_REGION)'
               awsCommand: 'sts'
               awsSubCommand: 'get-caller-identity'
               awsArguments: '--query Account --output text'
-              failOnStandardError: false
-
-          # Récupérer l’ACCOUNT_ID via AWSCLI@1 et composer le registre ECR
-          - task: AWSCLI@1
-            displayName: 'Compute ECR registry URL'
-            inputs:
-              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-              regionName: '$(AWS_REGION)'
-              awsCommand: 'sts'
-              awsSubCommand: 'get-caller-identity'
-              awsArguments: '--query Account --output text'
-              failOnStandardError: false
+              failOnStandardError: true
           - script: |
               set -e
-              ACCOUNT_ID=$(cat $(System.DefaultWorkingDirectory)/aws_cli_output.txt 2>/dev/null || true)
+              # Lire l'Account ID depuis le fichier de sortie de la tâche AWSCLI@1
+              ACCOUNT_ID=$(cat $(System.DefaultWorkingDirectory)/aws_cli_output.txt | tr -d '[:space:]')
               if [ -z "$ACCOUNT_ID" ]; then
-                # Fallback: rerun rapidement via aws (devrait encore être authentifié grâce à la tâche)
-                ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+                echo "##[error]Failed to retrieve AWS Account ID from aws_cli_output.txt"
+                exit 1
               fi
-              echo "ACCOUNT_ID=$ACCOUNT_ID"
+              echo "AWS Account ID: $ACCOUNT_ID"
               ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.$(AWS_REGION).amazonaws.com"
+              echo "ECR Registry: $ECR_REGISTRY"
               echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
             displayName: 'Set ECR_REGISTRY variable'
 
@@ -598,11 +589,15 @@ stages:
               awsCommand: 'ecr'
               awsSubCommand: 'get-login-password'
               awsArguments: ''
-              failOnStandardError: false
+              failOnStandardError: true
           - script: |
               set -e
               # Le task AWSCLI@1 écrit la sortie dans aws_cli_output.txt
               PASSWORD=$(cat $(System.DefaultWorkingDirectory)/aws_cli_output.txt)
+              if [ -z "$PASSWORD" ]; then
+                echo "##[error]Failed to retrieve ECR password from aws_cli_output.txt"
+                exit 1
+              fi
               echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
             displayName: 'Set ECR_PASSWORD variable'
 
