@@ -182,6 +182,8 @@ stages:
 
       - job: sonarcloud_analysis
         displayName: 'SonarCloud analysis'
+        dependsOn: unit_tests
+        condition: succeeded()
         steps:
           - checkout: self
           - script: |
@@ -521,6 +523,10 @@ stages:
             inputs:
               awsCredentials: '$(AWS_SERVICE_CONNECTION)'
               regionName: '$(AWS_REGION)'
+              awsCommand: 'sts'
+              awsSubCommand: 'get-caller-identity'
+              awsArguments: ''
+              failOnStandardError: false
 
           # Récupérer l’ACCOUNT_ID et composer le registre ECR
           - script: |
@@ -531,7 +537,7 @@ stages:
               echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
             displayName: 'Compute ECR registry URL'
 
-          # S’assurer que le repo ECR existe (idempotent)
+          # S’assurer que le repo ECR existe
           - script: |
               set -e
               aws ecr describe-repositories --repository-names "$(ECR_REPOSITORY)" >/dev/null 2>&1 || \
@@ -567,7 +573,7 @@ stages:
               echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
             displayName: 'Fetch ECR login password'
 
-          # Construire et pousser l’image via Jib avec multi-tags (appel unique)
+          # Construire et pousser l’image via Jib avec multi-tags
           - script: |
               set -e
               BASE_IMAGE="$(ECR_REGISTRY)/$(ECR_REPOSITORY)"
@@ -592,17 +598,9 @@ stages:
             displayName: 'Jib build & push (multi-tags in one call)'
             workingDirectory: $(BACKEND_DIR)
 
-          # Publier le JAR en artifact (utile pour debug/outillage)
           - task: PublishBuildArtifacts@1
             displayName: 'Publish backend JAR'
             inputs:
               PathtoPublish: '$(BACKEND_DIR)/target'
               ArtifactName: 'backend-target'
               publishLocation: 'Container'
-# -----------------------------------------------------------------------------
-# Notes:
-# - DAST et Gitleaks: remplacez les jobs placeholders par vos étapes existantes.
-# - OWASP (dependency-check) non bloquant: gardez-le dans votre stage qualité si déjà présent, avec -Ddependency-check.failBuild=false.
-# - SonarCloud: assurez-vous d’avoir SONAR_TOKEN défini en secret variable.
-# - Jib: le POM contient déjà le plugin; ici on force l’auth ECR via username=AWS + password=token.
-# -----------------------------------------------------------------------------
