@@ -440,8 +440,8 @@ stages:
   # ---------------------------------------------------------------------------
   - stage: secret_scan
     displayName: 'Secret Scanning'
-    dependsOn: security_scans
-    condition: succeeded()
+#    dependsOn: security_scans
+#    condition: succeeded()
     jobs:
       - job: gitleaks
         displayName: 'Scan repo for secrets with Gitleaks'
