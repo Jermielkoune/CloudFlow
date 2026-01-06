@@ -188,21 +188,28 @@ stages:
               if [ -f sonar-project.properties ]; then
                 echo "sonar-project.properties found, Maven will load it via properties-maven-plugin"
               else
-                echo "sonar-project.properties not found, relying on default Maven/SonarCloud config"
+                echo "sonar-project.properties not found, relying on explicit -D properties"
               fi
             displayName: 'Check sonar-project.properties presence'
             workingDirectory: $(BACKEND_DIR)
 
-          # Analyse SonarCloud (exclusivement)
+          # Analyse SonarCloud avec propriétés explicites requises
           - script: |
               ./mvnw -B -ntp clean test -DfailIfNoTests=false
-              ./mvnw -B -ntp -DskipTests=true sonar:sonar
-            displayName: 'Maven SonarCloud analysis'
+              ./mvnw -B -ntp -DskipTests=true sonar:sonar \
+                -Dsonar.host.url=https://sonarcloud.io \
+                -Dsonar.organization=sikaseal \
+                -Dsonar.projectKey=sikaseal_cloudflow \
+                -Dsonar.branch.name="$(Build.SourceBranchName)" \
+                -Dsonar.token="$(SONAR_TOKEN)" \
+                -Dsonar.java.binaries=target/classes \
+                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+                -Dsonar.junit.reportPaths=target/surefire-reports
+            displayName: 'Maven SonarCloud analysis (explicit properties)'
             workingDirectory: $(BACKEND_DIR)
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
 
-          # Blocage Quality Gate via API SonarCloud (branche courante)
           - script: |
               echo "Waiting for Quality Gate..."
               ATTEMPTS=60
