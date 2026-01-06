@@ -106,7 +106,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 1 – Toolchain Java uniquement
   # ---------------------------------------------------------------------------
-  - stage: Stage 1 - setup toolchain
+  - stage: setup_toolchain
     jobs:
       - job: pin_java
         displayName: 'Install JDK & verify Maven wrapper'
@@ -129,7 +129,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 2 – Caches Maven + Préparation des dépendances
   # ---------------------------------------------------------------------------
-  - stage: Stage 2 - deps & caches
+  - stage: deps_cache
     displayName: 'Maven caches + go-offline'
     dependsOn: setup_toolchain
     jobs:
@@ -158,9 +158,9 @@ stages:
             workingDirectory: $(BACKEND_DIR)
 
   # ---------------------------------------------------------------------------
-  # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud/DAST/Gitleaks)
+  # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud)
   # ---------------------------------------------------------------------------
-  - stage: Stage 3 - quality & security
+  - stage: quality_security
     displayName: 'Quality gates + Security'
     dependsOn: deps_cache
     jobs:
@@ -197,7 +197,7 @@ stages:
           - script: |
               ./mvnw -B -ntp clean test -DfailIfNoTests=false
               ./mvnw -B -ntp -DskipTests=true sonar:sonar
-            displayName: 'Maven verify + SonarCloud'
+            displayName: 'Maven SonarCloud analysis'
             workingDirectory: $(BACKEND_DIR)
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
@@ -225,9 +225,11 @@ stages:
             env:
               SONAR_TOKEN: $(SONAR_TOKEN)
 
-  # --- Stage 4 : Security scans (SAST & optional DAST) -------------------------
+  # ---------------------------------------------------------------------------
+  # Stage 4 – Security scans (SAST & optional DAST)
+  # ---------------------------------------------------------------------------
   - stage: security_scans
-    displayName: 'Stage 4 - Security scans (SAST & DAST)'
+    displayName: 'Security scans (SAST & DAST)'
     dependsOn: quality_security
     condition: succeeded()
     jobs:
@@ -412,8 +414,11 @@ stages:
               artifact: 'zap-report'
               publishLocation: 'pipeline'
 
+  # ---------------------------------------------------------------------------
+  # Stage 5 – Secret Scanning
+  # ---------------------------------------------------------------------------
   - stage: secret_scan
-    displayName: 'Stage 5 - Secret Scanning'
+    displayName: 'Secret Scanning'
     dependsOn: security_scans
     condition: succeeded()
     jobs:
@@ -476,111 +481,13 @@ stages:
             displayName: 'Policy gate: block only on main when leaks'
 
   # ---------------------------------------------------------------------------
-  # Stage 4 – Build & Push image via Jib vers AWS ECR (multi-tagging)
-  # Sans docker daemon. Authentification via AWS service connection.
+  # Stage 6 – Build & Push image via Jib vers AWS ECR (multi-tagging)
   # ---------------------------------------------------------------------------
-#  - stage: build_and_push_image
-#    displayName: 'Build & Push container image (Jib → ECR)'
-#    dependsOn: quality_security
-#    jobs:
-#      - job: jib_to_ecr
-#        displayName: 'Jib build & push (multi-tags)'
-#        steps:
-#          - checkout: self
-#
-#          # Authentifier la session AWS via la Service Connection
-#          - task: AmazonWebServicesAuthenticate@1
-#            displayName: 'AWS Authenticate (Service Connection)'
-#            inputs:
-#              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-#              regionName: '$(AWS_REGION)'
-#
-#          # Récupérer l’ACCOUNT_ID et composer le registre ECR
-#          - script: |
-#              set -e
-#              ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-#              echo "ACCOUNT_ID=$ACCOUNT_ID"
-#              ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.$(AWS_REGION).amazonaws.com"
-#              echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
-#            displayName: 'Compute ECR registry URL'
-#
-#          # S’assurer que le repo ECR existe (idempotent)
-#          - script: |
-#              set -e
-#              aws ecr describe-repositories --repository-names "$(ECR_REPOSITORY)" >/dev/null 2>&1 || \
-#                aws ecr create-repository --repository-name "$(ECR_REPOSITORY)" --image-scanning-configuration scanOnPush=false
-#            displayName: 'Ensure ECR repository exists'
-#
-#          # Extraire la version de l’application depuis pom.xml et définir les variables demandées
-#          - script: |
-#              set -e
-#              VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
-#              echo "Resolved Maven version: $VERSION"
-#              echo "##vso[task.setvariable variable=IMAGE_TAG_VERSION]$VERSION"
-#              echo "##vso[task.setvariable variable=IMAGE_TAG_BUILDID]$(Build.BuildId)"
-#              # Déterminer le tag de branche optionnel
-#              BRANCH_NAME="$(Build.SourceBranchName)"
-#              case "$BRANCH_NAME" in
-#                main|master)
-#                  BRANCH_TAG="${BRANCH_NAME}-latest"
-#                  ;;
-#                *)
-#                  BRANCH_TAG=""
-#                  ;;
-#              esac
-#              echo "Branch tag: $BRANCH_TAG"
-#              echo "##vso[task.setvariable variable=BRANCH_TAG]$BRANCH_TAG"
-#            displayName: 'Resolve tags (version, buildId, branch)'
-#            workingDirectory: $(BACKEND_DIR)
-#
-#          # Obtenir le mot de passe ECR (token temporaire) pour Jib
-#          - script: |
-#              set -e
-#              PASSWORD=$(aws ecr get-login-password --region "$(AWS_REGION)")
-#              echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
-#            displayName: 'Fetch ECR login password'
-#
-#          # Construire et pousser l’image via Jib avec multi-tags
-#          - script: |
-#              set -e
-#              BASE_IMAGE="$(ECR_REGISTRY)/$(ECR_REPOSITORY)"
-#
-#              TAG_IMMUTABLE="v$(IMAGE_TAG_VERSION)-$(IMAGE_TAG_BUILDID)"
-#              TAG_FLOATING_VERSION="v$(IMAGE_TAG_VERSION)"
-#
-#              echo "Will push: ${BASE_IMAGE}:${TAG_IMMUTABLE} and ${BASE_IMAGE}:${TAG_FLOATING_VERSION}"
-#              if [ -n "$(BRANCH_TAG)" ]; then
-#                echo "Will also push branch tag: ${BASE_IMAGE}:$(BRANCH_TAG)"
-#              fi
-#
-#              # Pousser les 2 tags principaux
-#              for t in "$TAG_IMMUTABLE" "$TAG_FLOATING_VERSION"; do
-#                echo "Pushing tag: ${BASE_IMAGE}:${t}"
-#                ./mvnw -B -ntp \
-#                  -Djib.to.image="${BASE_IMAGE}:${t}" \
-#                  -Djib.to.auth.username=AWS \
-#                  -Djib.to.auth.password="$(ECR_PASSWORD)" \
-#                  jib:build
-#              done
-#
-#              # Pousser le tag de branche optionnel s'il est défini
-#              if [ -n "$(BRANCH_TAG)" ]; then
-#                ./mvnw -B -ntp \
-#                  -Djib.to.image="${BASE_IMAGE}:$(BRANCH_TAG)" \
-#                  -Djib.to.auth.username=AWS \
-#                  -Djib.to.auth.password="$(ECR_PASSWORD)" \
-#                  jib:build
-#              fi
-#            displayName: 'Jib build & push (multi-tags)'
-#            workingDirectory: $(BACKEND_DIR)
-#
-#          # Publier le JAR en artifact (utile pour debug/outillage)
-#          - task: PublishBuildArtifacts@1
-#            displayName: 'Publish backend JAR'
-#            inputs:
-#              PathtoPublish: '$(BACKEND_DIR)/target'
-#              ArtifactName: 'backend-target'
-#              publishLocation: 'Container'
+  # - stage: build_and_push_image
+  #   displayName: 'Build & Push container image (Jib → ECR)'
+  #   dependsOn: secret_scan
+  #   jobs:
+  #     # ...existing code...
 
 # -----------------------------------------------------------------------------
 # Notes:
