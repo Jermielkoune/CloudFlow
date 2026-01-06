@@ -569,6 +569,14 @@ stages:
                 fi
                 echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
 
+          # Compiler le projet et créer le Fat JAR (nécessaire pour Jib)
+          - script: |
+              set -e
+              echo "Compiling project with production profile..."
+              ./mvnw -B -ntp clean package -Pprod -DskipTests
+            displayName: 'Maven package (production profile)'
+            workingDirectory: $(BACKEND_DIR)
+
           # Construire et pousser l’image via Jib avec multi-tags (appel unique)
           - script: |
               set -e
