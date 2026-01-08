@@ -23,9 +23,9 @@ variables:
       DEPCHK_VERSION: '12.1.1'
       DEPCHK_FORMATS: 'JSON'
       DEPCHK_FAIL_CVSS: '7.0'
-      DEPCHK_CONTINUE_ON_NON_MAIN: true
+      DEPCHK_CONTINUE_ON_NON_MAIN: 'true'
       # DAST (ZAP)
-      RUN_DAST_ON_MAIN: true
+      RUN_DAST_ON_MAIN: 'true'
       DAST_TARGET_URL: 'http://localhost:8080'
       # Gitleaks
       GITLEAKS_VERSION: '8.18.1'
@@ -66,7 +66,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 1 – Toolchain Java uniquement
   # ---------------------------------------------------------------------------
-  - stage: Setup toolchain
+  - stage: setup_toolchain
     displayName: 'Setup toolchain'
     jobs:
       - job: pin_java
@@ -125,7 +125,7 @@ stages:
               sonarOrg: '$(SONAR_ORG)'
               projectKey: '$(SONAR_PROJECT_KEY)'
               tokenVarName: 'SONAR_TOKEN'
-              blockOnQualityGate: true
+              blockOnQualityGate: 'true'
               blockOnBranches: '$(QUALITY_GATE_BLOCK_POLICY)'
               jacocoXmlPath: 'target/site/jacoco/jacoco.xml'
               junitReportPath: 'target/surefire-reports'
@@ -150,9 +150,9 @@ stages:
               dataDir: '$(DEPCHK_DATA_DIR)'
               suppressionPath: ''
               nvdApiKeyVarName: 'NVD_API_KEY'
-              autoupdateOnMain: true
-              continueOnNonMain: true
-              publishArtifacts: true
+              autoupdateOnMain: 'true'
+              continueOnNonMain: 'true'
+              publishArtifacts: 'true'
 
       - job: dast_zap
         displayName: 'DAST — OWASP ZAP baseline'
@@ -165,8 +165,8 @@ stages:
               runOnBranches:
                 - main
               startupProfile: 'e2e'
-              startupWaitSeconds: 60
-              publishArtifacts: true
+              startupWaitSeconds: '60'
+              publishArtifacts: 'true'
 
   # ---------------------------------------------------------------------------
   # Stage 5 – Secret Scanning
@@ -184,8 +184,8 @@ stages:
               gitleaksVersion: '$(GITLEAKS_VERSION)'
               jsonReportName: '$(GITLEAKS_REPORT_JSON)'
               sarifReportName: '$(GITLEAKS_REPORT_SARIF)'
-              blockOnMainWhenLeaks: true
-              useConfigFile: true
+              blockOnMainWhenLeaks: 'true'
+              useConfigFile: 'true'
 
   # ---------------------------------------------------------------------------
   # Stage 6 – Build & Push image via Jib vers AWS ECR (multi-tagging)
@@ -206,4 +206,4 @@ stages:
               ecrRepository: '$(ECR_REPOSITORY)'
               tagBranchPatterns:
                 main: 'main-latest'
-              publishJarArtifact: true
+              publishJarArtifact: 'true'
