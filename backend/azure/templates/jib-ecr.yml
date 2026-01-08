@@ -5,7 +5,8 @@
 #   - awsServiceConnection: Nom du service connection AWS
 #   - awsRegion: Région AWS (défaut: eu-west-3)
 #   - ecrRepository: Nom du repository ECR (défaut: sikaseal/cloudflow-ecr)
-#   - tagBranchPatterns: Map des branches vers tags flottants (ex: main→main-latest)
+#   - tagBranchPatterns: Map des branches vers tags flottants (ex: main→main-latest) [compat]
+#   - branchTagMap: Mapping branches→tags sous forme de chaîne 'main=main-latest,develop=dev-latest'
 #   - publishJarArtifact: Publier le JAR en artefact (défaut: true)
 
 parameters:
@@ -25,9 +26,12 @@ parameters:
     type: object
     default:
       main: 'main-latest'
+  - name: branchTagMap
+    type: string
+    default: 'main=main-latest'
   - name: publishJarArtifact
-    type: boolean
-    default: true
+    type: string
+    default: 'true'
 
 steps:
   - checkout: self
@@ -64,11 +68,12 @@ steps:
       echo "##vso[task.setvariable variable=IMAGE_TAG_BUILDID]$(Build.BuildId)"
       BRANCH_NAME="$(Build.SourceBranchName)"
       BRANCH_TAG=""
-      ${{ each pair in parameters.tagBranchPatterns }}:
-      if [ "$BRANCH_NAME" = "${{ pair.key }}" ]; then
-        BRANCH_TAG="${{ pair.value }}"
-      fi
-      ${{ end }}
+      # Resolve BRANCH_TAG from branchTagMap 'key=value,key=value'
+      IFS=',' read -ra __pairs <<< "${{ parameters.branchTagMap }}"
+      for kv in "${__pairs[@]}"; do
+        key="${kv%%=*}"; val="${kv#*=}"
+        if [ "$BRANCH_NAME" = "$key" ]; then BRANCH_TAG="$val"; fi
+      done
       echo "##vso[task.setvariable variable=BRANCH_TAG]$BRANCH_TAG"
     displayName: 'Resolve tags (version, buildId, branch)'
     workingDirectory: ${{ parameters.backendDir }}
@@ -124,5 +129,4 @@ steps:
       PathtoPublish: '${{ parameters.backendDir }}/target'
       ArtifactName: 'backend-target'
       publishLocation: 'Container'
-    condition: eq(${{ parameters.publishJarArtifact }}, true)
-
+    condition: eq('${{ parameters.publishJarArtifact }}', 'true')
