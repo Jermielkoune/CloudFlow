@@ -95,6 +95,6 @@ steps:
           and(eq(variables['QUALITY_GATE_BLOCK_POLICY'], 'main+develop'), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
         )
       )
-      env:
+    env:
       ${{ parameters.tokenVarName }}: $(${{ parameters.tokenVarName }})
 
