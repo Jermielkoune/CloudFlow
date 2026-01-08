@@ -186,7 +186,7 @@ stages:
         displayName: 'Scan repo for secrets with Gitleaks'
         steps:
           - checkout: self
-          - fetchDepth: 1
+            fetchDepth: 1
           - template: azure/templates/secret-scan-gitleaks.yml
             parameters:
               gitleaksVersion: '$(GITLEAKS_VERSION)'
