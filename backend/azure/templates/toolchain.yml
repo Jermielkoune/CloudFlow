@@ -1,0 +1,32 @@
+# Template: Installation de la toolchain Java
+# Description: Installe JDK et valide Maven wrapper
+# Paramètres:
+#   - jdkVersion: Version JDK à installer (défaut: 17)
+#   - backendDir: Répertoire du backend (défaut: backend)
+
+parameters:
+  - name: jdkVersion
+    type: string
+    default: '17'
+  - name: backendDir
+    type: string
+    default: 'backend'
+
+steps:
+  - checkout: self
+
+  - task: JavaToolInstaller@0
+    displayName: 'Install Java ${{ parameters.jdkVersion }}'
+    inputs:
+      versionSpec: '${{ parameters.jdkVersion }}'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
+  - script: |
+      echo "JAVA_HOME=$JAVA_HOME"
+      java -version
+      chmod +x mvnw
+      ./mvnw -v
+    displayName: 'Verify Java & Maven wrapper'
+    workingDirectory: ${{ parameters.backendDir }}
+
