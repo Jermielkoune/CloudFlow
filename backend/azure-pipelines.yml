@@ -2,6 +2,10 @@
 # Variables globales
 # -----------------------------------------------------------------------------
 variables:
+  # Répertoires
+  - name: BACKEND_DIR
+    value: 'backend'
+
   # AWS / ECR
   - name: AWS_REGION
     value: 'eu-west-3'
@@ -18,10 +22,6 @@ variables:
     value: ''
   - name: BRANCH_TAG
     value: ''
-
-  # Dossier du module backend
-  - name: BACKEND_DIR
-    value: 'backend'
 
   # On demande ici à l'agent d'aller chercher les variables définies dans la variable group "cloudflow"
   - group: cloudflow
@@ -106,7 +106,7 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 1 – Toolchain Java uniquement
   # ---------------------------------------------------------------------------
-  - stage: setup_toolchain
+  - stage: Setup toolchain
     jobs:
       - job: pin_java
         displayName: 'Install JDK & verify Maven wrapper'
