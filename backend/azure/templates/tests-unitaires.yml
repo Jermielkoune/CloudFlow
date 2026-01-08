@@ -1,0 +1,34 @@
+# Template: Tests unitaires Maven
+# Description: Exécute les tests unitaires Maven et publie les rapports JUnit
+# Paramètres:
+#   - backendDir: Répertoire du backend (défaut: backend)
+#   - mvnArgs: Arguments Maven additionnels (défaut: -B -ntp)
+#   - testResultsGlob: Pattern glob pour les résultats de tests (défaut: */target/surefire-reports/*.xml)
+
+parameters:
+  - name: backendDir
+    type: string
+    default: 'backend'
+  - name: mvnArgs
+    type: string
+    default: '-B -ntp'
+  - name: testResultsGlob
+    type: string
+    default: '*/target/surefire-reports/*.xml'
+
+steps:
+  - checkout: self
+
+  - script: |
+      ./mvnw ${{ parameters.mvnArgs }} clean test
+    displayName: 'Maven test'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  - task: PublishTestResults@2
+    displayName: 'Publish JUnit results'
+    inputs:
+      testResultsFiles: '${{ parameters.testResultsGlob }}'
+      testRunTitle: 'Unit Tests'
+      failTaskOnFailedTests: true
+    condition: always()
+
