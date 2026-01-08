@@ -141,6 +141,7 @@ stages:
       - job: sast_depcheck_docker
         displayName: 'SAST — OWASP Dependency-Check'
         steps:
+          - checkout: self
           - template: azure/templates/sast-depcheck.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'
