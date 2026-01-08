@@ -1,0 +1,209 @@
+# Pipeline orchestrateur CI Backend - Version templateisée
+
+# -----------------------------------------------------------------------------
+# Variables globales
+# -----------------------------------------------------------------------------
+variables:
+  - template: azure/templates/variables-common.yml
+    parameters:
+      variableGroupName: 'cloudflow'
+      # Toolchain
+      JDK_VERSION: '17'
+      # Type d'agent
+      vmImage: 'ubuntu-latest'
+      # AWS / ECR
+      AWS_REGION: 'eu-west-3'
+      ECR_REPOSITORY: 'sikaseal/cloudflow-ecr'
+      AWS_SERVICE_CONNECTION: 'aws-cloudflow-sc'
+      # Sonar
+      SONAR_HOST_URL: 'https://sonarcloud.io'
+      SONAR_ORG: 'sikaseal'
+      SONAR_PROJECT_KEY: 'sikaseal_cloudflow'
+      # Dependency-Check
+      DEPCHK_VERSION: '12.1.1'
+      DEPCHK_FORMATS: 'JSON'
+      DEPCHK_FAIL_CVSS: '7.0'
+      DEPCHK_CONTINUE_ON_NON_MAIN: true
+      # DAST (ZAP)
+      RUN_DAST_ON_MAIN: true
+      DAST_TARGET_URL: 'http://localhost:8080'
+      # Gitleaks
+      GITLEAKS_VERSION: '8.18.1'
+      # Quality Gate policy
+      QUALITY_GATE_BLOCK_POLICY: 'main'
+
+# -----------------------------------------------------------------------------
+# Déclencheurs
+# -----------------------------------------------------------------------------
+trigger:
+  batch: true
+  branches:
+    include: [ main, develop ]
+  paths:
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
+
+# PR (GitHub): build de validation
+pr:
+  autoCancel: true
+  drafts: false
+  branches:
+    include: [main, develop]
+  paths:
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
+
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
+pool:
+  vmImage: '$(vmImage)'
+
+# -----------------------------------------------------------------------------
+# Stages
+# -----------------------------------------------------------------------------
+stages:
+  # ---------------------------------------------------------------------------
+  # Stage 1 – Toolchain Java uniquement
+  # ---------------------------------------------------------------------------
+  - stage: Setup toolchain
+    displayName: 'Setup toolchain'
+    jobs:
+      - job: pin_java
+        displayName: 'Install JDK & verify Maven wrapper'
+        steps:
+          - template: azure/templates/toolchain.yml
+            parameters:
+              jdkVersion: '$(JDK_VERSION)'
+              backendDir: '$(BACKEND_DIR)'
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 – Caches Maven + Préparation des dépendances
+  # ---------------------------------------------------------------------------
+  - stage: deps_cache
+    displayName: 'Maven caches + go-offline'
+    dependsOn: setup_toolchain
+    jobs:
+      - job: cache_and_prime
+        displayName: 'Restore Maven caches & dependency:go-offline'
+        steps:
+          - template: azure/templates/maven-cache.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              cacheKeysStrategy: 'pom-hash'
+          # Prime Maven dependencies (go-offline) après restauration des caches
+          - script: |
+              ./mvnw -B dependency:go-offline -DskipTests
+            displayName: 'Prime Maven dependencies (go-offline)'
+            workingDirectory: '$(BACKEND_DIR)'
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud)
+  # ---------------------------------------------------------------------------
+  - stage: quality_security
+    displayName: 'Quality gates + Security'
+    dependsOn: deps_cache
+    jobs:
+      - job: unit_tests
+        displayName: 'Run unit tests (Maven)'
+        steps:
+          - template: azure/templates/tests-unitaires.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              mvnArgs: '-B -ntp'
+              testResultsGlob: '$(BACKEND_DIR)/target/surefire-reports/*.xml'
+
+      - job: sonarcloud_analysis
+        displayName: 'SonarCloud analysis'
+        dependsOn: unit_tests
+        condition: succeeded()
+        steps:
+          - template: azure/templates/sonarcloud.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              sonarHostUrl: '$(SONAR_HOST_URL)'
+              sonarOrg: '$(SONAR_ORG)'
+              projectKey: '$(SONAR_PROJECT_KEY)'
+              tokenVarName: 'SONAR_TOKEN'
+              blockOnQualityGate: true
+              blockOnBranches: '$(QUALITY_GATE_BLOCK_POLICY)'
+              jacocoXmlPath: 'target/site/jacoco/jacoco.xml'
+              junitReportPath: 'target/surefire-reports'
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 – Security scans (SAST & optional DAST)
+  # ---------------------------------------------------------------------------
+  - stage: security_scans
+    displayName: 'Security scans (SAST & DAST)'
+    dependsOn: quality_security
+    condition: succeeded()
+    jobs:
+      - job: sast_depcheck_docker
+        displayName: 'SAST — OWASP Dependency-Check'
+        steps:
+          - template: azure/templates/sast-depcheck.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              depcheckVersion: '$(DEPCHK_VERSION)'
+              formats: '$(DEPCHK_FORMATS)'
+              failCvss: '$(DEPCHK_FAIL_CVSS)'
+              dataDir: '$(DEPCHK_DATA_DIR)'
+              suppressionPath: ''
+              nvdApiKeyVarName: 'NVD_API_KEY'
+              autoupdateOnMain: true
+              continueOnNonMain: true
+              publishArtifacts: true
+
+      - job: dast_zap
+        displayName: 'DAST — OWASP ZAP baseline'
+        condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+        steps:
+          - template: azure/templates/dast-zap.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              targetUrl: '$(DAST_TARGET_URL)'
+              runOnBranches:
+                - main
+              startupProfile: 'e2e'
+              startupWaitSeconds: 60
+              publishArtifacts: true
+
+  # ---------------------------------------------------------------------------
+  # Stage 5 – Secret Scanning
+  # ---------------------------------------------------------------------------
+  - stage: secret_scan
+    displayName: 'Secret Scanning'
+    dependsOn: security_scans
+    condition: succeeded()
+    jobs:
+      - job: gitleaks
+        displayName: 'Scan repo for secrets with Gitleaks'
+        steps:
+          - template: azure/templates/secret-scan-gitleaks.yml
+            parameters:
+              gitleaksVersion: '$(GITLEAKS_VERSION)'
+              jsonReportName: '$(GITLEAKS_REPORT_JSON)'
+              sarifReportName: '$(GITLEAKS_REPORT_SARIF)'
+              blockOnMainWhenLeaks: true
+              useConfigFile: true
+
+  # ---------------------------------------------------------------------------
+  # Stage 6 – Build & Push image via Jib vers AWS ECR (multi-tagging)
+  # ---------------------------------------------------------------------------
+  - stage: build_and_push_image
+    displayName: 'Build & Push container image (Jib → ECR)'
+    dependsOn: secret_scan
+    condition: succeeded()
+    jobs:
+      - job: jib_to_ecr
+        displayName: 'Jib build & push (multi-tags)'
+        steps:
+          - template: azure/templates/jib-ecr.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              awsServiceConnection: '$(AWS_SERVICE_CONNECTION)'
+              awsRegion: '$(AWS_REGION)'
+              ecrRepository: '$(ECR_REPOSITORY)'
+              tagBranchPatterns:
+                main: 'main-latest'
+              publishJarArtifact: true
