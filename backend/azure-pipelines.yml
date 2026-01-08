@@ -9,6 +9,7 @@ variables:
       variableGroupName: 'cloudflow'
       # Toolchain
       JDK_VERSION: '17'
+      BACKEND_DIR: 'backend'
       # Type d'agent
       vmImage: 'ubuntu-latest'
       # AWS / ECR
