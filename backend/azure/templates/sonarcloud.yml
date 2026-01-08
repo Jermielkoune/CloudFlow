@@ -86,7 +86,7 @@ steps:
       done
       echo "Quality Gate timeout"; exit 2
     displayName: 'Block on Quality Gate (poll SonarCloud)'
-condition: |
+    condition: |
       and(
         succeeded(),
         eq('${{ parameters.blockOnQualityGate }}', 'true'),
@@ -95,6 +95,6 @@ condition: |
           and(eq(variables['QUALITY_GATE_BLOCK_POLICY'], 'main+develop'), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
         )
       )
-    env:
+      env:
       ${{ parameters.tokenVarName }}: $(${{ parameters.tokenVarName }})
 
