@@ -1,76 +1,36 @@
+# Pipeline orchestrateur CI Backend - Version templateisée
+
 # -----------------------------------------------------------------------------
 # Variables globales
 # -----------------------------------------------------------------------------
 variables:
-  # Répertoires
-  - name: BACKEND_DIR
-    value: 'backend'
-
-  # AWS / ECR
-  - name: AWS_REGION
-    value: 'eu-west-3'
-  - name: ECR_REPOSITORY
-    value: 'sikaseal/cloudflow-ecr'
-  - name: AWS_SERVICE_CONNECTION
-    value: 'aws-cloudflow-sc'
-
-  # Tags d'images (multi-tagging)
-  # Définis dynamiquement lors du job d'image
-  - name: IMAGE_TAG_VERSION
-    value: ''
-  - name: IMAGE_TAG_BUILDID
-    value: ''
-  - name: BRANCH_TAG
-    value: ''
-
-  # On demande ici à l'agent d'aller chercher les variables définies dans la variable group "cloudflow"
-  - group: cloudflow
-
-  # Toolchain pour figer la version de Java à installer, la version de node js pour les outils JS
-  - name: JDK_VERSION
-    value: '17'
-#  - name: NODE_VERSION
-#    value: '22.15.0'
-
-  #--------------------------
-  # OWASP Dependency-Check (Docker)
-  # C'est un outil de type SCA (Software Composition Analysis) qui analysera les dépendances Maven/NPM
-  # et identifie les vulnérabilités
-
-  # Quel conteneur docker utilisé ?
-#  - name: DEPCHK_IMAGE
-#    value: 'owasp/dependency-check:latest'
-  # Quel seuil de sévérité pour échouer le build ?
-  - name: DEPCHK_FAIL_CVSS
-    value: '7.0'
-  - name: DEPCHK_SUPPRESSION
-    value: ''
-  # Quel format pour le rapport ?
-  - name: DEPCHK_FORMATS
-    value: 'JSON'
-  # Quelle version pour l'outil ?
-  - name: DEPCHK_VERSION
-    value: '12.1.1'
-  # Dossier caché où l'outil stocke sa bdd CVE
-  - name: DEPCHK_DATA_DIR
-    value: '$(Pipeline.Workspace)/depcheck-data'
-  #--------------------------
-
-  # DAST : Dynamic Application Security Testing
-  # L'objectif est de scanner l'appli pendant qu'elle tourne
-  - name: RUN_DAST_ON_MAIN
-    value: 'true'
-  - name: DAST_TARGET_URL
-    value: 'http://localhost:8080'
-
-  # GitLeaks
-  # L'objectif est de détecter des tokens, des mots de passe, des clés API, des secrets commités par erreur
-  - name: GITLEAKS_VERSION
-    value: '8.18.1'
-  - name: GITLEAKS_REPORT_JSON
-    value: 'gitleaks-report.json'
-  - name: GITLEAKS_REPORT_SARIF
-    value: 'gitleaks-report.sarif'
+  - template: azure/templates/variables-common.yml
+    parameters:
+      variableGroupName: 'cloudflow'
+      # Toolchain
+      JDK_VERSION: '17'
+      # Type d'agent
+      vmImage: 'ubuntu-latest'
+      # AWS / ECR
+      AWS_REGION: 'eu-west-3'
+      ECR_REPOSITORY: 'sikaseal/cloudflow-ecr'
+      AWS_SERVICE_CONNECTION: 'aws-cloudflow-sc'
+      # Sonar
+      SONAR_HOST_URL: 'https://sonarcloud.io'
+      SONAR_ORG: 'sikaseal'
+      SONAR_PROJECT_KEY: 'sikaseal_cloudflow'
+      # Dependency-Check
+      DEPCHK_VERSION: '12.1.1'
+      DEPCHK_FORMATS: 'JSON'
+      DEPCHK_FAIL_CVSS: '7.0'
+      DEPCHK_CONTINUE_ON_NON_MAIN: true
+      # DAST (ZAP)
+      RUN_DAST_ON_MAIN: true
+      DAST_TARGET_URL: 'http://localhost:8080'
+      # Gitleaks
+      GITLEAKS_VERSION: '8.18.1'
+      # Quality Gate policy
+      QUALITY_GATE_BLOCK_POLICY: 'main'
 
 # -----------------------------------------------------------------------------
 # Déclencheurs
@@ -83,11 +43,7 @@ trigger:
     include: ['backend/pom.xml', 'backend/src/**']
     exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
 
-# PR (GitHub): build de validation.
-# Fusionner d’abord puis découvrir le problème après serait trop tard, donc on vérifie la qualité et la stabilité du code
-# avant merge
-# autoCancel: true annule le run précédent si de nouveaux commits arrivent. On gère juste le dernier commit
-# drafts: false pour éviter de builder les PR en brouillon.
+# PR (GitHub): build de validation
 pr:
   autoCancel: true
   drafts: false
@@ -96,35 +52,30 @@ pr:
   paths:
     include: ['backend/pom.xml', 'backend/src/**']
     exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
-# ---------------------------------------------------------------------------
 
-# On va demandé à Azure DevOps de nous fournir une VM prête à l'emploi, hébergé par microsoft
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: '$(vmImage)'
 
+# -----------------------------------------------------------------------------
+# Stages
+# -----------------------------------------------------------------------------
 stages:
   # ---------------------------------------------------------------------------
   # Stage 1 – Toolchain Java uniquement
   # ---------------------------------------------------------------------------
   - stage: Setup toolchain
+    displayName: 'Setup toolchain'
     jobs:
       - job: pin_java
         displayName: 'Install JDK & verify Maven wrapper'
         steps:
-          - checkout: self
-          - task: JavaToolInstaller@0
-            displayName: 'Install Java $(JDK_VERSION)'
-            inputs:
-              versionSpec: '$(JDK_VERSION)'
-              jdkArchitectureOption: 'x64'
-              jdkSourceOption: 'PreInstalled'
-
-          - script: |
-              echo "JAVA_HOME=$JAVA_HOME"
-              java -version
-              ./mvnw -v
-            displayName: 'Verify Java & Maven wrapper'
-            workingDirectory: $(BACKEND_DIR)
+          - template: azure/templates/toolchain.yml
+            parameters:
+              jdkVersion: '$(JDK_VERSION)'
+              backendDir: '$(BACKEND_DIR)'
 
   # ---------------------------------------------------------------------------
   # Stage 2 – Caches Maven + Préparation des dépendances
@@ -136,26 +87,15 @@ stages:
       - job: cache_and_prime
         displayName: 'Restore Maven caches & dependency:go-offline'
         steps:
-          - checkout: self
-          - task: Cache@2
-            displayName: 'Restore ~/.m2/repository'
-            inputs:
-              key: 'maven | $(Agent.OS) | backend-pom-$(Build.SourceVersion)'
-              restoreKeys: |
-                maven | $(Agent.OS)
-              path: '$(HOME)/.m2/repository'
-
-          - task: Cache@2
-            displayName: 'Restore ~/.m2/wrapper'
-            inputs:
-              key: 'maven-wrapper | $(Agent.OS)'
-              path: '$(HOME)/.m2/wrapper'
-
-          # Préparer les dépendances Maven pour accélérer les builds
+          - template: azure/templates/maven-cache.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              cacheKeysStrategy: 'pom-hash'
+          # Prime Maven dependencies (go-offline) après restauration des caches
           - script: |
               ./mvnw -B dependency:go-offline -DskipTests
             displayName: 'Prime Maven dependencies (go-offline)'
-            workingDirectory: $(BACKEND_DIR)
+            workingDirectory: '$(BACKEND_DIR)'
 
   # ---------------------------------------------------------------------------
   # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud)
@@ -167,72 +107,28 @@ stages:
       - job: unit_tests
         displayName: 'Run unit tests (Maven)'
         steps:
-          - checkout: self
-          - script: |
-              ./mvnw -B -ntp clean test
-            displayName: 'Maven test'
-            workingDirectory: $(BACKEND_DIR)
-
-          - task: PublishTestResults@2
-            displayName: 'Publish JUnit results'
-            inputs:
-              testResultsFiles: '$(BACKEND_DIR)/target/surefire-reports/*.xml'
-              testRunTitle: 'Unit Tests'
-              failTaskOnFailedTests: true
+          - template: azure/templates/tests-unitaires.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              mvnArgs: '-B -ntp'
+              testResultsGlob: '$(BACKEND_DIR)/target/surefire-reports/*.xml'
 
       - job: sonarcloud_analysis
         displayName: 'SonarCloud analysis'
         dependsOn: unit_tests
         condition: succeeded()
         steps:
-          - checkout: self
-          - script: |
-              if [ -f sonar-project.properties ]; then
-                echo "sonar-project.properties found, Maven will load it via properties-maven-plugin"
-              else
-                echo "sonar-project.properties not found, relying on explicit -D properties"
-              fi
-            displayName: 'Check sonar-project.properties presence'
-            workingDirectory: $(BACKEND_DIR)
-
-          # Analyse SonarCloud avec propriétés explicites requises
-          - script: |
-              ./mvnw -B -ntp clean test -DfailIfNoTests=false
-              ./mvnw -B -ntp -DskipTests=true sonar:sonar \
-                -Dsonar.host.url=https://sonarcloud.io \
-                -Dsonar.organization=sikaseal \
-                -Dsonar.projectKey=sikaseal_cloudflow \
-                -Dsonar.branch.name="$(Build.SourceBranchName)" \
-                -Dsonar.token="$(SONAR_TOKEN)" \
-                -Dsonar.java.binaries=target/classes \
-                -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-                -Dsonar.junit.reportPaths=target/surefire-reports
-            displayName: 'Maven SonarCloud analysis (explicit properties)'
-            workingDirectory: $(BACKEND_DIR)
-            env:
-              SONAR_TOKEN: $(SONAR_TOKEN)
-
-          - script: |
-              echo "Waiting for Quality Gate..."
-              ATTEMPTS=60
-              SLEEP=10
-              BRANCH="$(Build.SourceBranchName)"
-              URL="https://sonarcloud.io/api/qualitygates/project_status?projectKey=sikaseal_cloudflow&branch=${BRANCH}"
-              for i in $(seq 1 $ATTEMPTS); do
-                RESP=$(curl -s -u "$(SONAR_TOKEN):" "$URL" || true)
-                echo "Attempt $i: $(echo "$RESP" | tr -d '\n')"
-                if echo "$RESP" | grep -q '"status":"OK"'; then
-                  echo "Quality Gate: OK"; exit 0
-                elif echo "$RESP" | grep -q '"status":"ERROR"'; then
-                  echo "Quality Gate: FAILED"; exit 1
-                fi
-                sleep $SLEEP
-              done
-              echo "Quality Gate timeout"; exit 2
-            displayName: 'Block on Quality Gate (poll SonarCloud)'
-            condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-            env:
-              SONAR_TOKEN: $(SONAR_TOKEN)
+          - template: azure/templates/sonarcloud.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              sonarHostUrl: '$(SONAR_HOST_URL)'
+              sonarOrg: '$(SONAR_ORG)'
+              projectKey: '$(SONAR_PROJECT_KEY)'
+              tokenVarName: 'SONAR_TOKEN'
+              blockOnQualityGate: true
+              blockOnBranches: '$(QUALITY_GATE_BLOCK_POLICY)'
+              jacocoXmlPath: 'target/site/jacoco/jacoco.xml'
+              junitReportPath: 'target/surefire-reports'
 
   # ---------------------------------------------------------------------------
   # Stage 4 – Security scans (SAST & optional DAST)
@@ -243,197 +139,34 @@ stages:
     condition: succeeded()
     jobs:
       - job: sast_depcheck_docker
-        displayName: 'SAST — OWASP Dependency-Check (Docker + SARIF)'
-        pool: { vmImage: 'ubuntu-latest' }
+        displayName: 'SAST — OWASP Dependency-Check'
         steps:
-          - task: JavaToolInstaller@0
-            displayName: 'Set up Java $(JDK_VERSION)'
-            inputs:
-              versionSpec: '$(JDK_VERSION)'
-              jdkArchitectureOption: 'x64'
-              jdkSourceOption: 'PreInstalled'
-          - script: chmod +x mvnw
-            displayName: 'Fix exec bit for mvnw'
-            workingDirectory: backend
-          - script: |
-              MAVEN_KEY=$(sha256sum backend/pom.xml | cut -d' ' -f1)
-              echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
-            displayName: 'Compute Maven cache key (sha256)'
-          - task: Cache@2
-            displayName: 'Restore Maven repo (~/.m2/repository)'
-            inputs:
-              key: 'maven | $(Agent.OS) | $(MAVEN_CACHE_KEY)'
-              restoreKeys: |
-                maven | $(Agent.OS)
-              path: '$(HOME)/.m2/repository'
-          - task: Cache@2
-            displayName: 'Restore Maven wrapper (~/.m2/wrapper)'
-            inputs:
-              key: 'maven-wrapper | $(Agent.OS)'
-              path: '$(HOME)/.m2/wrapper'
-          - script: mkdir -p "$(DEPCHK_DATA_DIR)"
-            displayName: 'Ensure depcheck data dir exists'
-          - task: Cache@2
-            displayName: 'Restore Dependency-Check NVD data'
-            inputs:
-              key: 'depcheck-nvd | $(Agent.OS)'
-              path: '$(DEPCHK_DATA_DIR)'
-          - script: |
-              if [ -n "$(DEPCHK_SUPPRESSION)" ] && [ -f "backend/$(DEPCHK_SUPPRESSION)" ]; then
-                echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]-DsuppressionFile=$(DEPCHK_SUPPRESSION)"
-                echo "Using suppression file: $(DEPCHK_SUPPRESSION)"
-              else
-                echo "No suppression file found or not set."
-                echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]"
-              fi
-            displayName: 'Detect optional suppression file'
-            workingDirectory: backend
-          - script: |
-              if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
-                echo "##vso[task.setvariable variable=DC_UPDATE]true"
-              else
-                echo "##vso[task.setvariable variable=DC_UPDATE]false"
-              fi
-            displayName: 'Decide DC update (main=true, PR/feature=false)'
-          - script: |
-              set -e
-              echo "Using DEPCHK_VERSION=$DEPCHK_VERSION"
-              echo "Using DEPCHK_FORMATS=$DEPCHK_FORMATS"
-              echo "Using DEPCHK_FAIL_CVSS=$DEPCHK_FAIL_CVSS"
-              echo "NVD API key present? $([ -n "${NVD_API_KEY:-}" ] && echo yes || echo no)"
-              echo "autoupdate (DC_UPDATE) = ${DC_UPDATE:-false}"
-              ./mvnw -B -ntp \
-                org.owasp:dependency-check-maven:$(DEPCHK_VERSION):check \
-                -DskipTests=true \
-                -Dformat=$(DEPCHK_FORMATS) \
-                -DfailOnCVSS=$(DEPCHK_FAIL_CVSS) \
-                -Dnvd.api.key=${NVD_API_KEY} \
-                -Dautoupdate=${DC_UPDATE} \
-                -Danalyzer.retirejs.enabled=false \
-                -Danalyzer.node.enabled=false \
-                -Danalyzer.nuspec.enabled=false \
-                -Danalyzer.assembly.enabled=false \
-                -Danalyzer.pip.enabled=false \
-                -Danalyzer.php.composer.enabled=false \
-                -Danalyzer.ruby.gemspec.enabled=false \
-                -Danalyzer.cocoapods.enabled=false \
-                -Danalyzer.swift.package.resolved.enabled=false \
-                -DossindexAnalyzerEnabled=false \
-                -DskipTestScope=true \
-                -DskipProvidedScope=true \
-                -Ddata.dir=${DEPCHK_DATA_DIR}
-            workingDirectory: backend
-            displayName: 'Run OWASP Dependency-Check (CVSS ≥ $(DEPCHK_FAIL_CVSS))'
-            continueOnError: ${{ ne(variables['Build.SourceBranch'], 'refs/heads/main') }}
-            env:
-              DEPCHK_VERSION: $(DEPCHK_VERSION)
-              DEPCHK_FORMATS: $(DEPCHK_FORMATS)
-              DEPCHK_FAIL_CVSS: $(DEPCHK_FAIL_CVSS)
-              DEPCHK_DATA_DIR: $(DEPCHK_DATA_DIR)
-              NVD_API_KEY: $(NVD_API_KEY)
-          - script: |
-              set -eu
-              REPORT_JSON="backend/target/dependency-check-report.json"
-              REPORT_SARIF="backend/target/dependency-check-report.sarif"
-              if [ ! -f "$REPORT_JSON" ]; then
-                echo "No JSON report found at $REPORT_JSON — ensure DEPCHK_FORMATS contains JSON."
-                exit 0
-              fi
-              cat > depcheck_json_to_sarif.py << 'PY'
-              import json, sys
-              src = sys.argv[1]; dst = sys.argv[2]
-              with open(src, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-              results = []
-              rules = {}
-              deps = data.get("dependencies", [])
-              for d in deps:
-                file = d.get("fileName") or d.get("filePath") or "unknown"
-                vulns = d.get("vulnerabilities") or []
-                for v in vulns:
-                  rule_id = v.get("name") or v.get("id") or "UNKNOWN"
-                  sev = (v.get("severity") or "").upper()
-                  score = v.get("cvssScore") or v.get("cvssv3",{}).get("baseScore") or 0
-                  desc = v.get("description") or ""
-                  url = v.get("url") or ""
-                  if rule_id not in rules:
-                    rules[rule_id] = {
-                      "id": rule_id,
-                      "name": rule_id,
-                      "shortDescription": { "text": rule_id },
-                      "fullDescription": { "text": desc[ :2000 ] },
-                      "helpUri": url or None,
-                      "properties": { "problem.severity": sev, "security-severity": str(score) }
-                    }
-                  results.append({
-                    "ruleId": rule_id,
-                    "level": ("error" if score and float(score) >= 7.0 else "warning"),
-                    "message": { "text": f"{ rule_id } ({ sev }) score={ score }: { desc[ :300 ] }"},
-                    "locations": [ { "physicalLocation": { "artifactLocation": { "uri": file } } } ]
-                  })
-              sarif = {
-                "version": "2.1.0",
-                "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-                "runs": [ { "tool": { "driver": { "name": "OWASP Dependency-Check (Docker)", "informationUri": "https://owasp.org/www-project-dependency-check/", "rules": list(rules.values()) } }, "results": results } ]
-              }
-              with open(dst, 'w', encoding='utf-8') as f:
-                json.dump(sarif, f, indent=2)
-              echo "SARIF written to $REPORT_SARIF"
-            displayName: 'Convert Dependency-Check JSON to SARIF'
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: depcheck JSON'
-            inputs:
-              targetPath: 'backend/target/dependency-check-report.json'
-              artifact: 'depcheck-json'
-              publishLocation: 'pipeline'
-            condition: always()
+          - template: azure/templates/sast-depcheck.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              depcheckVersion: '$(DEPCHK_VERSION)'
+              formats: '$(DEPCHK_FORMATS)'
+              failCvss: '$(DEPCHK_FAIL_CVSS)'
+              dataDir: '$(DEPCHK_DATA_DIR)'
+              suppressionPath: ''
+              nvdApiKeyVarName: 'NVD_API_KEY'
+              autoupdateOnMain: true
+              continueOnNonMain: true
+              publishArtifacts: true
 
       - job: dast_zap
         displayName: 'DAST — OWASP ZAP baseline'
-        pool: { vmImage: 'ubuntu-latest' }
         condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         steps:
-          - script: chmod +x mvnw
-            displayName: 'Fix exec bit for mvnw'
-            workingDirectory: backend
-          - script: |
-              ./mvnw -B -ntp -DskipTests=true spring-boot:run -Dspring-boot.run.profiles=e2e &
-              for i in {1..30}; do
-                if curl -fsS "$(DAST_TARGET_URL)/management/health" >/dev/null 2>&1; then
-                  echo "App is up"; break
-                fi
-                echo "Waiting app..."; sleep 2
-              done
-            workingDirectory: backend
-            displayName: 'Start backend locally (e2e) & wait health'
-          - script: |
-              set -e
-              OUT_DIR="$(System.DefaultWorkingDirectory)/dast"
-              mkdir -p "$OUT_DIR"
-              : "${DAST_TARGET_URL:=''}"
-              if [ -z "$DAST_TARGET_URL" ]; then
-                echo "ERROR: DAST_TARGET_URL is empty. Define it (e.g. http://localhost:8080)"; exit 1
-              fi
-              docker run --rm -t --network="host" -u "$(id -u):$(id -g)" -v "$OUT_DIR:/zap/wrk" -w /zap/wrk owasp/zap2docker-stable zap-baseline.py -t "$DAST_TARGET_URL" -r zap_report.html || true
-              # Créer un rapport placeholder si manquant
-              if [ ! -f "$OUT_DIR/zap_report.html" ]; then
-                echo "<html><body><h1>ZAP report missing</h1><p>No report generated. Check previous logs.</p></body></html>" > "$OUT_DIR/zap_report.html"
-                echo "WARN: zap_report.html was not generated by ZAP; created a placeholder."
-              fi
-              # Marquer la présence pour conditionner la publication
-              if [ -f "$OUT_DIR/zap_report.html" ]; then
-                echo "##vso[task.setvariable variable=ZAP_REPORT_EXISTS]true"
-              else
-                echo "##vso[task.setvariable variable=ZAP_REPORT_EXISTS]false"
-              fi
-            displayName: 'OWASP ZAP baseline scan (HTML report)'
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: zap-report.html'
-            inputs:
-              targetPath: '$(System.DefaultWorkingDirectory)/dast/zap_report.html'
-              artifact: 'zap-report'
-              publishLocation: 'pipeline'
-            condition: and(always(), eq(variables['ZAP_REPORT_EXISTS'], 'true'))
+          - template: azure/templates/dast-zap.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              targetUrl: '$(DAST_TARGET_URL)'
+              runOnBranches:
+                - main
+              startupProfile: 'e2e'
+              startupWaitSeconds: 60
+              publishArtifacts: true
 
   # ---------------------------------------------------------------------------
   # Stage 5 – Secret Scanning
@@ -445,61 +178,14 @@ stages:
     jobs:
       - job: gitleaks
         displayName: 'Scan repo for secrets with Gitleaks'
-        pool:
-          vmImage: 'ubuntu-latest'
         steps:
-          - checkout: self
-            fetchDepth: 1
-          - script: |
-              set -euo pipefail
-              echo "Downloading Gitleaks v$(GITLEAKS_VERSION)…"
-              wget -q https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
-              tar -xf gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz
-              chmod +x gitleaks
-              ./gitleaks version
-            displayName: 'Install Gitleaks (pinned)'
-          - script: |
-              set -euo pipefail
-              EXTRA_ARGS=""
-              if [ -f ".gitleaks.toml" ]; then
-                echo "Found .gitleaks.toml → using as config"
-                EXTRA_ARGS="--config .gitleaks.toml"
-              fi
-              echo "Running Gitleaks (JSON)…"
-              if ./gitleaks detect --no-banner --redact --source . ${EXTRA_ARGS} --report-format json --report-path "$(GITLEAKS_REPORT_JSON)"; then
-                echo "##vso[task.setvariable variable=GITLEAKS_LEAKS]false"
-              else
-                echo "##vso[task.setvariable variable=GITLEAKS_LEAKS]true"
-                echo "Gitleaks found leaks (JSON generation done)."
-              fi
-              echo "Running Gitleaks (SARIF)…"
-              ./gitleaks detect --no-banner --redact --source . ${EXTRA_ARGS} --report-format sarif --report-path "$(GITLEAKS_REPORT_SARIF)" || true
-              [ -f "$(GITLEAKS_REPORT_JSON)" ]  && echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]true"  || echo "##vso[task.setvariable variable=GITLEAKS_JSON_EXISTS]false"
-              [ -f "$(GITLEAKS_REPORT_SARIF)" ] && echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]true" || echo "##vso[task.setvariable variable=GITLEAKS_SARIF_EXISTS]false"
-            displayName: 'Run Gitleaks scan (JSON + SARIF, resilient)'
-            continueOnError: true
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: gitleaks JSON'
-            inputs:
-              targetPath: '$(GITLEAKS_REPORT_JSON)'
-              artifact: 'gitleaks-json'
-              publishLocation: 'pipeline'
-            condition: and(always(), eq(variables['GITLEAKS_JSON_EXISTS'], 'true'))
-          - task: PublishPipelineArtifact@1
-            displayName: 'Publish artifact: gitleaks SARIF'
-            inputs:
-              targetPath: '$(GITLEAKS_REPORT_SARIF)'
-              artifact: 'gitleaks-sarif'
-              publishLocation: 'pipeline'
-            condition: and(always(), eq(variables['GITLEAKS_SARIF_EXISTS'], 'true'))
-          - script: |
-              echo "Leaks=$(GITLEAKS_LEAKS), Branch=$(Build.SourceBranch)"
-              if [ "$(GITLEAKS_LEAKS)" = "true" ] && [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
-                echo "Secrets detected and branch is main → failing the job."; exit 1
-              else
-                echo "Non-blocking (either no leaks or not on main)."
-              fi
-            displayName: 'Policy gate: block only on main when leaks'
+          - template: azure/templates/secret-scan-gitleaks.yml
+            parameters:
+              gitleaksVersion: '$(GITLEAKS_VERSION)'
+              jsonReportName: '$(GITLEAKS_REPORT_JSON)'
+              sarifReportName: '$(GITLEAKS_REPORT_SARIF)'
+              blockOnMainWhenLeaks: true
+              useConfigFile: true
 
   # ---------------------------------------------------------------------------
   # Stage 6 – Build & Push image via Jib vers AWS ECR (multi-tagging)
@@ -512,95 +198,12 @@ stages:
       - job: jib_to_ecr
         displayName: 'Jib build & push (multi-tags)'
         steps:
-          - checkout: self
-          - script: chmod +x mvnw
-            displayName: 'Fix exec bit for mvnw'
-            workingDirectory: $(BACKEND_DIR)
-
-          # Récupérer l'ACCOUNT_ID AWS et composer le registre ECR
-          - task: AWSShellScript@1
-            displayName: 'Get AWS Account ID and set ECR_REGISTRY'
-            inputs:
-              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-              regionName: '$(AWS_REGION)'
-              scriptType: 'inline'
-              inlineScript: |
-                set -e
-                ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text | tr -d '[:space:]')
-                if [ -z "$ACCOUNT_ID" ]; then
-                  echo "##[error]Failed to retrieve AWS Account ID"
-                  exit 1
-                fi
-                echo "AWS Account ID: $ACCOUNT_ID"
-                ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.$(AWS_REGION).amazonaws.com"
-                echo "ECR Registry: $ECR_REGISTRY"
-                echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
-
-          # Extraire la version de l'application depuis pom.xml et définir les variables demandées
-          - script: |
-              set -e
-              VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
-              echo "Resolved Maven version: $VERSION"
-              echo "##vso[task.setvariable variable=IMAGE_TAG_VERSION]$VERSION"
-              echo "##vso[task.setvariable variable=IMAGE_TAG_BUILDID]$(Build.BuildId)"
-              BRANCH_NAME="$(Build.SourceBranchName)"
-              case "$BRANCH_NAME" in
-                main|master)
-                  BRANCH_TAG="${BRANCH_NAME}-latest" ;;
-                *) BRANCH_TAG="" ;;
-              esac
-              echo "##vso[task.setvariable variable=BRANCH_TAG]$BRANCH_TAG"
-            displayName: 'Resolve tags (version, buildId, branch)'
-            workingDirectory: $(BACKEND_DIR)
-
-          # Obtenir le mot de passe ECR (token temporaire) pour Jib
-          - task: AWSShellScript@1
-            displayName: 'Get ECR login password and set ECR_PASSWORD'
-            inputs:
-              awsCredentials: '$(AWS_SERVICE_CONNECTION)'
-              regionName: '$(AWS_REGION)'
-              scriptType: 'inline'
-              inlineScript: |
-                set -e
-                PASSWORD=$(aws ecr get-login-password)
-                if [ -z "$PASSWORD" ]; then
-                  echo "##[error]Failed to retrieve ECR password"
-                  exit 1
-                fi
-                echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
-
-          # Compiler le projet et créer le Fat JAR (nécessaire pour Jib)
-          - script: |
-              set -e
-              echo "Compiling project with production profile..."
-              ./mvnw -B -ntp clean package -Pprod -DskipTests
-            displayName: 'Maven package (production profile)'
-            workingDirectory: $(BACKEND_DIR)
-
-          # Construire et pousser l’image via Jib avec multi-tags (appel unique)
-          - script: |
-              set -e
-              BASE_IMAGE="$(ECR_REGISTRY)/$(ECR_REPOSITORY)"
-              TAG_IMMUTABLE="v$(IMAGE_TAG_VERSION)-$(IMAGE_TAG_BUILDID)"
-              TAG_FLOATING_VERSION="v$(IMAGE_TAG_VERSION)"
-              ADDITIONAL_TAGS="$TAG_FLOATING_VERSION"
-              if [ -n "$(BRANCH_TAG)" ]; then
-                ADDITIONAL_TAGS="$ADDITIONAL_TAGS,$(BRANCH_TAG)"
-              fi
-              echo "Primary tag: ${BASE_IMAGE}:${TAG_IMMUTABLE}"
-              echo "Additional tags: ${ADDITIONAL_TAGS}"
-              ./mvnw -B -ntp \
-                -Djib.to.image="${BASE_IMAGE}:${TAG_IMMUTABLE}" \
-                -Djib.to.tags="${ADDITIONAL_TAGS}" \
-                -Djib.to.auth.username=AWS \
-                -Djib.to.auth.password="$(ECR_PASSWORD)" \
-                jib:build
-            displayName: 'Jib build & push (multi-tags in one call)'
-            workingDirectory: $(BACKEND_DIR)
-
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish backend JAR'
-            inputs:
-              PathtoPublish: '$(BACKEND_DIR)/target'
-              ArtifactName: 'backend-target'
-              publishLocation: 'Container'
+          - template: azure/templates/jib-ecr.yml
+            parameters:
+              backendDir: '$(BACKEND_DIR)'
+              awsServiceConnection: '$(AWS_SERVICE_CONNECTION)'
+              awsRegion: '$(AWS_REGION)'
+              ecrRepository: '$(ECR_REPOSITORY)'
+              tagBranchPatterns:
+                main: 'main-latest'
+              publishJarArtifact: true
