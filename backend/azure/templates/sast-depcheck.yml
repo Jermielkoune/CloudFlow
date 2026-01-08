@@ -1,0 +1,151 @@
+# Template: SAST OWASP Dependency-Check
+# Description: Detecter si les dependances utilisées par le projet contiennent des failles connues
+# et génère rapports JSON/SARIF
+# Paramètres:
+#   - backendDir: Répertoire du backend
+#   - depcheckVersion: Version du plugin (défaut: 12.1.1)
+#   - formats: Formats de rapport (défaut: JSON)
+#   - failCvss: Seuil CVSS pour échec (défaut: 7.0)
+#   - dataDir: Répertoire des données NVD
+#   - suppressionPath: Chemin du fichier de suppression (optionnel)
+#   - nvdApiKeyVarName: Nom de la variable contenant la clé API NVD (défaut: NVD_API_KEY)
+#   - autoupdateOnMain: Activer l'update sur main (défaut: true)
+#   - continueOnNonMain: Continuer en cas d'erreur hors main (défaut: true)
+#   - publishArtifacts: Publier les artefacts (défaut: true)
+
+parameters:
+  - name: backendDir
+    type: string
+    default: 'backend'
+  - name: depcheckVersion
+    type: string
+    default: '12.1.1'
+  - name: formats
+    type: string
+    default: 'JSON'
+  - name: failCvss
+    type: string
+    default: '7.0'
+  - name: dataDir
+    type: string
+    default: '$(Pipeline.Workspace)/depcheck-data'
+  - name: suppressionPath
+    type: string
+    default: ''
+  - name: nvdApiKeyVarName
+    type: string
+    default: 'NVD_API_KEY'
+  - name: autoupdateOnMain
+    type: boolean
+    default: true
+  - name: continueOnNonMain
+    type: boolean
+    default: true
+  - name: publishArtifacts
+    type: boolean
+    default: true
+
+steps:
+  - checkout: self
+
+  # Setup Java & prepare mvnw via toolchain template
+  - template: azure/templates/toolchain.yml
+    parameters:
+      jdkVersion: '$(JDK_VERSION)'
+      backendDir: ${{ parameters.backendDir }}
+
+  - script: |
+      MAVEN_KEY=$(sha256sum ${{ parameters.backendDir }}/pom.xml | cut -d' ' -f1)
+      echo "##vso[task.setvariable variable=MAVEN_CACHE_KEY]$MAVEN_KEY"
+    displayName: 'Compute Maven cache key (sha256)'
+
+  # Restore Maven caches via shared template (removes local duplication)
+  - template: azure/templates/maven-cache.yml
+    parameters:
+      backendDir: ${{ parameters.backendDir }}
+      cacheKeysStrategy: 'pom-hash'
+      useExternalKey: true
+      cacheKeyOverride: '$(MAVEN_CACHE_KEY)'
+
+  - script: mkdir -p "${{ parameters.dataDir }}"
+    displayName: 'Ensure depcheck data dir exists'
+
+  - task: Cache@2
+    displayName: 'Restore Dependency-Check NVD data'
+    inputs:
+      key: 'depcheck-nvd | $(Agent.OS)'
+      path: '${{ parameters.dataDir }}'
+
+  - script: |
+      if [ -n "${{ parameters.suppressionPath }}" ] && [ -f "${{ parameters.backendDir }}/${{ parameters.suppressionPath }}" ]; then
+        echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]-DsuppressionFile=${{ parameters.suppressionPath }}"
+        echo "Using suppression file: ${{ parameters.suppressionPath }}"
+      else
+        echo "No suppression file found or not set."
+        echo "##vso[task.setvariable variable=DEPCHK_SUP_ARG]"
+      fi
+    displayName: 'Detect optional suppression file'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  - script: |
+      if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+        echo "##vso[task.setvariable variable=DC_UPDATE]${{ parameters.autoupdateOnMain }}"
+      else
+        echo "##vso[task.setvariable variable=DC_UPDATE]false"
+      fi
+    displayName: 'Decide DC update (main=true, PR/feature=false)'
+
+  - script: |
+      set -e
+      echo "Using DEPCHK_VERSION=${{ parameters.depcheckVersion }}"
+      echo "Using DEPCHK_FORMATS=${{ parameters.formats }}"
+      echo "Using DEPCHK_FAIL_CVSS=${{ parameters.failCvss }}"
+      echo "NVD API key present? $([ -n "${${{ parameters.nvdApiKeyVarName }}:-}" ] && echo yes || echo no)"
+      echo "autoupdate (DC_UPDATE) = ${DC_UPDATE:-false}"
+      ./mvnw -B -ntp \
+        org.owasp:dependency-check-maven:${{ parameters.depcheckVersion }}:check \
+        -DskipTests=true \
+        -Dformat=${{ parameters.formats }} \
+        -DfailOnCVSS=${{ parameters.failCvss }} \
+        -Dnvd.api.key=${${{ parameters.nvdApiKeyVarName }}} \
+        -Dautoupdate=${DC_UPDATE} \
+        -Danalyzer.retirejs.enabled=false \
+        -Danalyzer.node.enabled=false \
+        -Danalyzer.nuspec.enabled=false \
+        -Danalyzer.assembly.enabled=false \
+        -Danalyzer.pip.enabled=false \
+        -Danalyzer.php.composer.enabled=false \
+        -Danalyzer.ruby.gemspec.enabled=false \
+        -Danalyzer.cocoapods.enabled=false \
+        -Danalyzer.swift.package.resolved.enabled=false \
+        -DossindexAnalyzerEnabled=false \
+        -DskipTestScope=true \
+        -DskipProvidedScope=true \
+        -Ddata.dir=${{ parameters.dataDir }}
+    workingDirectory: ${{ parameters.backendDir }}
+    displayName: 'Run OWASP Dependency-Check (CVSS ≥ ${{ parameters.failCvss }})'
+    continueOnError: ${{ and(parameters.continueOnNonMain, ne(variables['Build.SourceBranch'], 'refs/heads/main')) }}
+    env:
+      ${{ parameters.nvdApiKeyVarName }}: $(${{ parameters.nvdApiKeyVarName }})
+
+  - script: |
+      set -eu
+      REPORT_JSON="${{ parameters.backendDir }}/target/dependency-check-report.json"
+      REPORT_SARIF="${{ parameters.backendDir }}/target/dependency-check-report.sarif"
+      if [ ! -f "$REPORT_JSON" ]; then
+        echo "No JSON report found at $REPORT_JSON — ensure DEPCHK_FORMATS contains JSON."
+        exit 0
+      fi
+      python3 backend/azure/scripts/depcheck_json_to_sarif.py "$REPORT_JSON" "$REPORT_SARIF"
+      echo "SARIF written to $REPORT_SARIF"
+    displayName: 'Convert Dependency-Check JSON to SARIF'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+    condition: always()
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish artifact: depcheck JSON'
+    inputs:
+      targetPath: '${{ parameters.backendDir }}/target/dependency-check-report.json'
+      artifact: 'depcheck-json'
+      publishLocation: 'pipeline'
+    condition: and(always(), eq(${{ parameters.publishArtifacts }}, true))
