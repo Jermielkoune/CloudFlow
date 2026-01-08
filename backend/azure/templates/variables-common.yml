@@ -54,13 +54,13 @@ parameters:
     type: string
     default: '7.0'
   - name: DEPCHK_CONTINUE_ON_NON_MAIN
-    type: boolean
-    default: true
+    type: string
+    default: 'true'
 
   # DAST (ZAP)
   - name: RUN_DAST_ON_MAIN
-    type: boolean
-    default: true
+    type: string
+    default: 'true'
   - name: DAST_TARGET_URL
     type: string
     default: 'http://localhost:8080'
@@ -81,7 +81,7 @@ parameters:
 
 variables:
   # Variable groups (dynamiques via paramètre)
-  - group: ${{ parameters.variableGroupName }}  # Contient les secrets: SONAR_TOKEN, NVD_API_KEY, etc.
+  - group: ${{ parameters.variableGroupName }}
 
   # Répertoires (interne, non exposé)
   - name: BACKEND_DIR
@@ -102,15 +102,13 @@ variables:
   - name: AWS_SERVICE_CONNECTION
     value: ${{ parameters.AWS_SERVICE_CONNECTION }}
 
-  # Sonar (les secrets sont fournis par le variable group)
+  # Sonar
   - name: SONAR_HOST_URL
     value: ${{ parameters.SONAR_HOST_URL }}
   - name: SONAR_ORG
     value: ${{ parameters.SONAR_ORG }}
   - name: SONAR_PROJECT_KEY
     value: ${{ parameters.SONAR_PROJECT_KEY }}
-  # - name: SONAR_TOKEN
-  #   value: ''  # fournie par le variable group cloudflow
 
   # Dependency-Check
   - name: DEPCHK_VERSION
@@ -119,22 +117,18 @@ variables:
     value: ${{ parameters.DEPCHK_FORMATS }}
   - name: DEPCHK_FAIL_CVSS
     value: ${{ parameters.DEPCHK_FAIL_CVSS }}
-  # Dossier data (interne, non exposé)
   - name: DEPCHK_DATA_DIR
     value: '$(Pipeline.Workspace)/depcheck-data'
-  # - name: NVD_API_KEY
-  #   value: ''  # fourni par le variable group cloudflow
 
   # DAST (ZAP)
   - name: RUN_DAST_ON_MAIN
-    value: ${{ if eq(parameters.RUN_DAST_ON_MAIN, true) }}'true'${{ else }}'false'${{ end }}
+    value: ${{ parameters.RUN_DAST_ON_MAIN }}
   - name: DAST_TARGET_URL
     value: ${{ parameters.DAST_TARGET_URL }}
 
   # Gitleaks
   - name: GITLEAKS_VERSION
     value: ${{ parameters.GITLEAKS_VERSION }}
-  # Rapports Gitleaks (interne, non exposé)
   - name: GITLEAKS_REPORT_JSON
     value: 'gitleaks-report.json'
   - name: GITLEAKS_REPORT_SARIF
@@ -144,4 +138,4 @@ variables:
   - name: QUALITY_GATE_BLOCK_POLICY
     value: ${{ parameters.QUALITY_GATE_BLOCK_POLICY }}
   - name: DEPCHK_CONTINUE_ON_NON_MAIN
-    value: ${{ if eq(parameters.DEPCHK_CONTINUE_ON_NON_MAIN, true) }}'true'${{ else }}'false'${{ end }}
+    value: ${{ parameters.DEPCHK_CONTINUE_ON_NON_MAIN }}
