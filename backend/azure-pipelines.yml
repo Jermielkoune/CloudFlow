@@ -9,7 +9,6 @@ variables:
       variableGroupName: 'cloudflow'
       # Toolchain
       JDK_VERSION: '17'
-      BACKEND_DIR: 'backend'
       # Type d'agent
       vmImage: 'ubuntu-latest'
       # AWS / ECR
@@ -76,7 +75,7 @@ stages:
           - template: azure/templates/toolchain.yml
             parameters:
               jdkVersion: '$(JDK_VERSION)'
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
 
   # ---------------------------------------------------------------------------
   # Stage 2 – Caches Maven + Préparation des dépendances
@@ -90,13 +89,13 @@ stages:
         steps:
           - template: azure/templates/maven-cache.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               cacheKeysStrategy: 'pom-hash'
           # Prime Maven dependencies (go-offline) après restauration des caches
           - script: |
               ./mvnw -B dependency:go-offline -DskipTests
             displayName: 'Prime Maven dependencies (go-offline)'
-            workingDirectory: '$(BACKEND_DIR)'
+            workingDirectory: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
 
   # ---------------------------------------------------------------------------
   # Stage 3 – Qualité & sécurité (Checkstyle/Spotless/JUnit/SonarCloud)
@@ -110,9 +109,9 @@ stages:
         steps:
           - template: azure/templates/tests-unitaires.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               mvnArgs: '-B -ntp'
-              testResultsGlob: '$(BACKEND_DIR)/target/surefire-reports/*.xml'
+              testResultsGlob: '$(Build.SourcesDirectory)/$(BACKEND_DIR)/target/surefire-reports/*.xml'
 
       - job: sonarcloud_analysis
         displayName: 'SonarCloud analysis'
@@ -121,7 +120,7 @@ stages:
         steps:
           - template: azure/templates/sonarcloud.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               sonarHostUrl: '$(SONAR_HOST_URL)'
               sonarOrg: '$(SONAR_ORG)'
               projectKey: '$(SONAR_PROJECT_KEY)'
@@ -144,7 +143,7 @@ stages:
         steps:
           - template: azure/templates/sast-depcheck.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               depcheckVersion: '$(DEPCHK_VERSION)'
               formats: '$(DEPCHK_FORMATS)'
               failCvss: '$(DEPCHK_FAIL_CVSS)'
@@ -161,7 +160,7 @@ stages:
         steps:
           - template: azure/templates/dast-zap.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               targetUrl: '$(DAST_TARGET_URL)'
               runOnBranches:
                 - main
@@ -201,7 +200,7 @@ stages:
         steps:
           - template: azure/templates/jib-ecr.yml
             parameters:
-              backendDir: '$(BACKEND_DIR)'
+              backendDir: '$(Build.SourcesDirectory)/$(BACKEND_DIR)'
               awsServiceConnection: '$(AWS_SERVICE_CONNECTION)'
               awsRegion: '$(AWS_REGION)'
               ecrRepository: '$(ECR_REPOSITORY)'
