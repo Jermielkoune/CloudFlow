@@ -34,7 +34,6 @@ parameters:
     default: 'true'
 
 steps:
-  - checkout: self
 
   - script: chmod +x mvnw
     displayName: 'Fix exec bit for mvnw'

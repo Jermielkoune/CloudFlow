@@ -13,8 +13,6 @@ parameters:
     default: 'backend'
 
 steps:
-  - checkout: self
-
   - task: JavaToolInstaller@0
     displayName: 'Install Java ${{ parameters.jdkVersion }}'
     inputs:

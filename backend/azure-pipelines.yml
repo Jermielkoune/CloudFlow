@@ -72,6 +72,7 @@ stages:
       - job: pin_java
         displayName: 'Install JDK & verify Maven wrapper'
         steps:
+          - checkout: self
           - template: azure/templates/toolchain.yml
             parameters:
               jdkVersion: '$(JDK_VERSION)'
@@ -87,6 +88,7 @@ stages:
       - job: cache_and_prime
         displayName: 'Restore Maven caches & dependency:go-offline'
         steps:
+          - checkout: self
           - template: azure/templates/maven-cache.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'
@@ -107,6 +109,7 @@ stages:
       - job: unit_tests
         displayName: 'Run unit tests (Maven)'
         steps:
+          - checkout: self
           - template: azure/templates/tests-unitaires.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'
@@ -118,6 +121,7 @@ stages:
         dependsOn: unit_tests
         condition: succeeded()
         steps:
+          - checkout: self
           - template: azure/templates/sonarcloud.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'
@@ -159,6 +163,7 @@ stages:
         displayName: 'DAST — OWASP ZAP baseline'
         condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
         steps:
+          - checkout: self
           - template: azure/templates/dast-zap.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'
@@ -180,6 +185,8 @@ stages:
       - job: gitleaks
         displayName: 'Scan repo for secrets with Gitleaks'
         steps:
+          - checkout: self
+          - fetchDepth: 1
           - template: azure/templates/secret-scan-gitleaks.yml
             parameters:
               gitleaksVersion: '$(GITLEAKS_VERSION)'
@@ -199,6 +206,7 @@ stages:
       - job: jib_to_ecr
         displayName: 'Jib build & push (multi-tags)'
         steps:
+          - checkout: self
           - template: azure/templates/jib-ecr.yml
             parameters:
               backendDir: '$(BACKEND_DIR)'

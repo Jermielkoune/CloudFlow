@@ -24,7 +24,6 @@ parameters:
     default: ''
 
 steps:
-  - checkout: self
 
   # Option 1: Use external key if provided
   - ${{ if and(eq(parameters.useExternalKey, true), ne(parameters.cacheKeyOverride, '')) }}:

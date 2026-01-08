@@ -46,7 +46,6 @@ parameters:
     default: true
 
 steps:
-  - checkout: self
 
   # Setup Java & prepare mvnw via toolchain template
   - template: toolchain.yml

@@ -17,7 +17,6 @@ parameters:
     default: '*/target/surefire-reports/*.xml'
 
 steps:
-  - checkout: self
 
   - script: |
       ./mvnw ${{ parameters.mvnArgs }} clean test

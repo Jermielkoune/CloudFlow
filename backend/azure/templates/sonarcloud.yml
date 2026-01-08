@@ -41,7 +41,6 @@ parameters:
     default: 'target/surefire-reports'
 
 steps:
-  - checkout: self
 
   - script: |
       if [ -f sonar-project.properties ]; then
