@@ -49,7 +49,7 @@ steps:
   - checkout: self
 
   # Setup Java & prepare mvnw via toolchain template
-  - template: azure/templates/toolchain.yml
+  - template: toolchain.yml
     parameters:
       jdkVersion: '$(JDK_VERSION)'
       backendDir: ${{ parameters.backendDir }}
@@ -60,7 +60,7 @@ steps:
     displayName: 'Compute Maven cache key (sha256)'
 
   # Restore Maven caches via shared template (removes local duplication)
-  - template: azure/templates/maven-cache.yml
+  - template: maven-cache.yml
     parameters:
       backendDir: ${{ parameters.backendDir }}
       cacheKeysStrategy: 'pom-hash'
