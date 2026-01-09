@@ -72,14 +72,7 @@ Votre `pom.xml` doit inclure :
 
 Le pipeline est organisé en **6 stages séquentiels** :
 
-```mermaid
-graph TD
-    A[1. Setup Toolchain] --> B[2. Maven Caches]
-    B --> C[3. Quality & Security]
-    C --> D[4. Security Scans]
-    D --> E[5. Secret Scanning]
-    E --> F[6. Build & Push Image]
-```
+![Architecture Pipeline](images/pipeline-CI.png)
 
 ### Détail des Stages
 
@@ -91,31 +84,6 @@ graph TD
 | **4. Security Scans** | SAST (Dependency-Check) + DAST optionnel (ZAP) | OWASP DC, ZAP | ~5-15min |
 | **5. Secret Scanning** | Détection de secrets/tokens dans le code | Gitleaks | ~30s |
 | **6. Build & Push Image** | Compilation production + Push vers AWS ECR | Jib, AWS ECR | ~2-5min |
-
-### Flux des Jobs
-
-```
-Stage 1: setup_toolchain
-  └─ pin_java (Install JDK 17)
-
-Stage 2: deps_cache
-  └─ cache_and_prime (Restore Maven cache + go-offline)
-
-Stage 3: quality_security
-  ├─ unit_tests (Maven test + JUnit reports)
-  └─ sonarcloud_analysis (depends: unit_tests)
-       └─ Quality Gate verification (bloque si KO sur main)
-
-Stage 4: security_scans
-  ├─ sast_depcheck_docker (OWASP Dependency-Check)
-  └─ dast_zap (OWASP ZAP, uniquement sur main)
-
-Stage 5: secret_scan
-  └─ gitleaks (Scan de secrets, bloque sur main si détection)
-
-Stage 6: build_and_push_image
-  └─ jib_to_ecr (Build Jib + Multi-tagging ECR)
-```
 
 ---
 
@@ -164,7 +132,7 @@ Créez un **Variable Group** nommé `cloudflow` (ou personnalisez `variableGroup
 1. **Vérifiez les pré-requis** (Java 17, Maven Wrapper, structure du projet)
 2. **Créez le Variable Group** dans Azure DevOps :
    - Allez dans **Pipelines > Library > Variable groups**
-   - Créez un groupe nommé `cloudflow`
+   - Créez un groupe nommé `cloudflow` par exemple
    - Ajoutez `SONAR_TOKEN` et `NVD_API_KEY` (en tant que secrets)
 
 ### Étape 2 : Créer le Service Connection AWS
@@ -172,7 +140,7 @@ Créez un **Variable Group** nommé `cloudflow` (ou personnalisez `variableGroup
 Si vous déployez vers AWS ECR :
 
 1. Allez dans **Project Settings > Service connections**
-2. Créez une connexion AWS nommée `aws-cloudflow-sc`
+2. Créez une connexion AWS nommée `aws-cloudflow-sc` par exemple
 3. Configurez vos credentials AWS (Access Key ID + Secret)
 
 ### Étape 3 : Créer votre Pipeline
@@ -414,19 +382,6 @@ git push origin main
 
 ## 🔐 Bonnes Pratiques de Sécurité
 
-### Gestion des Secrets
-
-✅ **À FAIRE :**
-- Stocker tous les secrets dans un **Variable Group** Azure DevOps
-- Marquer les variables comme **Secret** (masquées dans les logs)
-- Utiliser des **Service Connections** pour les credentials cloud (AWS, Azure)
-- Restreindre l'accès au Variable Group aux équipes autorisées
-
-❌ **À NE PAS FAIRE :**
-- Ne JAMAIS commiter de secrets dans le code
-- Ne pas mettre de tokens en clair dans les fichiers YAML
-- Ne pas logger les valeurs des secrets
-
 ### Quality Gates
 
 Le pipeline bloque automatiquement sur `main` si :
@@ -455,48 +410,6 @@ Sur les branches de développement (`develop`, feature branches) :
 
 ---
 
-## 🐛 Troubleshooting
-
-### Erreur : `Not found workingDirectory: /home/vsts/work/1/s/backend`
-
-**Cause :** Le code source n'a pas été téléchargé (checkout manquant).
-
-**Solution :** Ajoutez `- checkout: self` au début de chaque `job` qui a besoin du code :
-
-```yaml
-jobs:
-  - job: mon_job
-    steps:
-      - checkout: self  # ← Ajouter cette ligne
-      - template: azure/templates/mon-template.yml
-```
-
-### Erreur : `Quality Gate skipped due to condition evaluation`
-
-**Cause :** Les variables ne sont pas correctement résolues dans la condition.
-
-**Solution :** Vérifiez que le template `sonarcloud.yml` utilise `variables['QUALITY_GATE_BLOCK_POLICY']` et non `$(QUALITY_GATE_BLOCK_POLICY)` dans la condition.
-
-### Erreur : `Failed to retrieve AWS Account ID`
-
-**Cause :** Le Service Connection AWS n'est pas configuré ou a des permissions insuffisantes.
-
-**Solution :**
-1. Vérifiez que le Service Connection existe et est nommé correctement
-2. Vérifiez que les credentials AWS ont les permissions `ecr:GetAuthorizationToken`, `ecr:PutImage`
-
-### Les caches Maven ne sont pas réutilisés
-
-**Cause :** La clé de cache change à chaque build.
-
-**Solution :** Utilisez la stratégie `pom-hash` (par défaut) qui base la clé sur le contenu du `pom.xml` :
-
-```yaml
-cacheKeysStrategy: 'pom-hash'
-```
-
----
-
 ## 📊 Optimisations de Performance
 
 ### Durée Totale du Pipeline
@@ -513,28 +426,6 @@ cacheKeysStrategy: 'pom-hash'
 2. **Parallel Jobs** : Les jobs dans un même stage s'exécutent en parallèle quand possible
 3. **DAST conditionnel** : ZAP ne s'exécute que sur `main` pour économiser du temps
 4. **Shallow clone** : Gitleaks utilise `fetchDepth: 1` pour un clone rapide
-
----
-
-## 📞 Support et Contribution
-
-### Documentation Complémentaire
-
-- [Azure Pipelines YAML Schema](https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema)
-- [SonarCloud Documentation](https://docs.sonarcloud.io/)
-- [OWASP Dependency-Check](https://owasp.org/www-project-dependency-check/)
-- [Jib Maven Plugin](https://github.com/GoogleContainerTools/jib/tree/master/jib-maven-plugin)
-
-### Questions Fréquentes
-
-**Q : Puis-je utiliser ce pipeline pour un projet Gradle ?**
-R : Non, ce pipeline est conçu pour Maven. Des adaptations seraient nécessaires pour Gradle.
-
-**Q : Puis-je désactiver certains stages ?**
-R : Oui, commentez les stages non désirés dans `azure-pipelines.yml` ou ajustez les conditions `condition:`.
-
-**Q : Comment ajouter un nouveau stage personnalisé ?**
-R : Créez un nouveau template dans `azure/templates/`, puis incluez-le dans `azure-pipelines.yml` avec les paramètres appropriés.
 
 ---
 
