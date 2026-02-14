@@ -3,7 +3,7 @@
 # Paramètres:
 #   - backendDir: Répertoire du backend (défaut: backend)
 #   - cacheKeysStrategy: Stratégie de clé de cache (pom-hash ou sourceVersion, défaut: pom-hash)
-#   - useExternalKey: Utiliser une clé externe déjà calculée (défaut: false)
+#   - useExternalKey: Utiliser une clé externe déjà calculée (défaut: 'false')
 #   - cacheKeyOverride: Valeur de clé externe (défaut: '')
 
 parameters:
@@ -17,16 +17,18 @@ parameters:
       - 'pom-hash'
       - 'sourceVersion'
   - name: useExternalKey
-    type: boolean
-    default: false
+    type: string
+    default: 'false'
   - name: cacheKeyOverride
     type: string
     default: ''
 
 steps:
 
+  - checkout: self
+
   # Option 1: Use external key if provided
-  - ${{ if and(eq(parameters.useExternalKey, true), ne(parameters.cacheKeyOverride, '')) }}:
+  - ${{ if and(eq(parameters.useExternalKey, 'true'), ne(parameters.cacheKeyOverride, '')) }}:
     - script: |
         set -e
         echo "Using external MAVEN_CACHE_KEY: ${{ parameters.cacheKeyOverride }}"
@@ -34,7 +36,7 @@ steps:
       displayName: 'Set Maven cache key (external override)'
 
   # Option 2: Compute cache key based on strategy
-  - ${{ if or(ne(parameters.useExternalKey, true), eq(parameters.cacheKeyOverride, '')) }}:
+  - ${{ if or(ne(parameters.useExternalKey, 'true'), eq(parameters.cacheKeyOverride, '')) }}:
     - ${{ if eq(parameters.cacheKeysStrategy, 'pom-hash') }}:
       - script: |
           set -e
