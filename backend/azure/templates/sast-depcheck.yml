@@ -120,7 +120,8 @@ steps:
         -DossindexAnalyzerEnabled=false \
         -DskipTestScope=true \
         -DskipProvidedScope=true \
-        -Ddata.dir=${{ parameters.dataDir }}
+        -Ddata.dir=${{ parameters.dataDir }} \
+        $([ -n "$(DEPCHK_SUP_ARG)" ] && echo "$(DEPCHK_SUP_ARG)" )
     workingDirectory: ${{ parameters.backendDir }}
     displayName: 'Run OWASP Dependency-Check (CVSS ≥ ${{ parameters.failCvss }})'
     continueOnError: ${{ and(parameters.continueOnNonMain, ne(variables['Build.SourceBranch'], 'refs/heads/main')) }}
@@ -128,16 +129,12 @@ steps:
       ${{ parameters.nvdApiKeyVarName }}: $(${{ parameters.nvdApiKeyVarName }})
 
   - script: |
-      set -eu
-      REPORT_JSON="${{ parameters.backendDir }}/target/dependency-check-report.json"
-      REPORT_SARIF="${{ parameters.backendDir }}/target/dependency-check-report.sarif"
-      if [ ! -f "$REPORT_JSON" ]; then
-        echo "No JSON report found at $REPORT_JSON — ensure DEPCHK_FORMATS contains JSON."
-        exit 0
-      fi
-      python3 backend/azure/scripts/depcheck_json_to_sarif.py "$REPORT_JSON" "$REPORT_SARIF"
-      echo "SARIF written to $REPORT_SARIF"
-    displayName: 'Convert Dependency-Check JSON to SARIF'
+      set -e
+      JSON_PATH="${{ parameters.backendDir }}/target/dependency-check-report.json"
+      SARIF_PATH="${{ parameters.backendDir }}/target/dependency-check-report.sarif"
+      [ -f "$JSON_PATH" ] && echo "##vso[task.setvariable variable=DEPCHK_JSON_EXISTS]true" || echo "##vso[task.setvariable variable=DEPCHK_JSON_EXISTS]false"
+      [ -f "$SARIF_PATH" ] && echo "##vso[task.setvariable variable=DEPCHK_SARIF_EXISTS]true" || echo "##vso[task.setvariable variable=DEPCHK_SARIF_EXISTS]false"
+    displayName: 'Detect generated reports (JSON/SARIF)'
     workingDirectory: '$(System.DefaultWorkingDirectory)'
     condition: always()
 
@@ -147,4 +144,12 @@ steps:
       targetPath: '${{ parameters.backendDir }}/target/dependency-check-report.json'
       artifact: 'depcheck-json'
       publishLocation: 'pipeline'
-    condition: and(always(), eq(${{ parameters.publishArtifacts }}, true))
+    condition: and(always(), eq(variables['DEPCHK_JSON_EXISTS'], 'true'), eq(${{ parameters.publishArtifacts }}, true))
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish artifact: depcheck SARIF'
+    inputs:
+      targetPath: '${{ parameters.backendDir }}/target/dependency-check-report.sarif'
+      artifact: 'depcheck-sarif'
+      publishLocation: 'pipeline'
+    condition: and(always(), eq(variables['DEPCHK_SARIF_EXISTS'], 'true'), eq(${{ parameters.publishArtifacts }}, true))

@@ -1,0 +1,67 @@
+# Pipeline orchestrateur CI Backend - Version templateisée
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+parameters:
+  - name: BrancheCible
+    displayName: "Branche à utiliser"
+    type: string
+    default: 'refs/heads/main'
+# -----------------------------------------------------------------------------
+# Variables globales
+# -----------------------------------------------------------------------------
+variables:
+  - name: Branche
+    value: $[ resources.repositories.Sikaseal.ref ]
+  - name: Commit
+    value: $[ resources.repositories.Sikaseal.version ]
+  - name: Nom
+    value: $[ resources.repositories.Sikaseal.name ]
+
+# -----------------------------------------------------------------------------
+# Déclencheurs
+# -----------------------------------------------------------------------------
+trigger: none
+pr: none
+
+resources:
+  repositories:
+    - repository: Sikaseal
+      endpoint: Jermielkoune-github-connexion-auth
+      trigger:
+        branches:
+          include: [ main, feature/*, bugfix/*, releases/* ]
+          exclude: [ release/old* ]
+        paths:
+          include: [ src/, pom.xml ]
+          exclude: [ README.md, .gitignore ]
+      pr:
+        drafts: false
+        branches:
+          include: [ main, releases/*]
+          exclude: [ release/old* ]
+        paths:
+          include: [ src/, pom.xml ]
+          exclude: [ README.md, .gitignore ]
+      name: Jermielkoune/sikaseal
+      ref: ${{ parameters.BrancheCible }}
+      type: github
+
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
+pool:
+  vmImage: '$(vmImage)'
+
+steps:
+  - checkout: Sikaseal
+    clean: true #pas forcément necessaire puisqu'on utilise un microsoft hosted pool
+    path: application-client # Le code sera dans le dossier 'application-client'
+    fetchTags: false # Gain de vitesse : on ignore les tags pour ce build
+    displayName: 'Checkout du projet Sikaseal (sans les tags)'
+
+  - script: |
+      echo "Emplacement actuel : $(pwd)"
+      echo "Contenu du dossier application-client :"
+      ls -F application-client
+    displayName: 'Vérification des fichiers'
+
