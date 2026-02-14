@@ -6,7 +6,7 @@
 #   - sonarOrg: Organisation Sonar
 #   - projectKey: Clé du projet Sonar
 #   - tokenVarName: Nom de la variable contenant le token Sonar (défaut: SONAR_TOKEN)
-#   - blockOnQualityGate: Bloquer si Quality Gate KO (défaut: true)
+#   - blockOnQualityGate: Bloquer si Quality Gate KO (string: 'true'|'false', défaut: 'true')
 #   - blockOnBranches: Branches sur lesquelles bloquer (main|main+develop|none, défaut: main)
 #   - jacocoXmlPath: Chemin relatif du rapport JaCoCo XML
 #   - junitReportPath: Chemin relatif des rapports JUnit
@@ -28,8 +28,8 @@ parameters:
     type: string
     default: 'SONAR_TOKEN'
   - name: blockOnQualityGate
-    type: boolean
-    default: true
+    type: string
+    default: 'true'
   - name: blockOnBranches
     type: string
     default: 'main'
@@ -41,6 +41,8 @@ parameters:
     default: 'target/surefire-reports'
 
 steps:
+
+  - checkout: self
 
   - script: |
       if [ -f sonar-project.properties ]; then
@@ -96,4 +98,3 @@ steps:
       )
     env:
       ${{ parameters.tokenVarName }}: $(${{ parameters.tokenVarName }})
-
