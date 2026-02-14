@@ -9,14 +9,22 @@ Pipeline CI/CD modulaire pour projets Java Spring Boot (Maven), avec qualité, s
 - Maven Wrapper (`mvnw`, `mvnw.cmd`)
 - Structure: `backend/pom.xml`, `backend/src/main/java`, `backend/src/test/java`
 
-## Démarrer en local
+## Démarrer en local avec un profil dev
 - Windows PowerShell:
   - `cd backend`
-  - `./mvnw -B -ntp spring-boot:run -Dspring-boot.run.profiles=dev`
+  - `mvn`
 - Linux/macOS:
   - `cd backend`
-  - `./mvnw -B -ntp spring-boot:run -Dspring-boot.run.profiles=dev`
+  - `./mvnw`
 - Santé: `http://localhost:8080/management/health`
+
+## Démarrer en local avec un profil prod
+- Windows PowerShell:
+    - `cd backend`
+    - `./mvnw -Pprod`
+- Linux/macOS:
+    - `cd backend`
+    - `mvn -Pprod`
 
 ## Tester
 - `cd backend && ./mvnw -B -ntp clean test`
