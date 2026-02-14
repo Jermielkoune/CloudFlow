@@ -1,0 +1,156 @@
+# Example pipeline for a Client repo using CloudFlow templates (per-stage includes)
+# Replace <Project>/<CloudFlowRepo> with your Azure DevOps Project/Repo names and optionally pin ref to a tag
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
+
+resources:
+  repositories:
+    - repository: cloudflowTemplates
+      type: git
+      name: CLOUDFLOW_TEMPLATES/CLOUDFLOW-JAVA-PROJECTS
+      ref: refs/heads/main  # or refs/tags/v1.0.0
+
+# -----------------------------------------------------------------------------
+# Variables globales
+# -----------------------------------------------------------------------------
+variables:
+  - template: azure/templates/variables-common.yml
+    parameters:
+      variableGroupName: 'cloudflow'
+      # Toolchain
+      JDK_VERSION: '17'
+      # Type d'agent
+      vmImage: 'ubuntu-latest'
+      # AWS / ECR
+      AWS_REGION: 'eu-west-3'
+      ECR_REPOSITORY: 'sikaseal/cloudflow-ecr'
+      AWS_SERVICE_CONNECTION: 'aws-cloudflow-sc'
+      # Sonar
+      SONAR_HOST_URL: 'https://sonarcloud.io'
+      SONAR_ORG: 'sikaseal'
+      SONAR_PROJECT_KEY: 'sikaseal_cloudflow'
+      # Dependency-Check
+      DEPCHK_VERSION: '12.1.1'
+      DEPCHK_FORMATS: 'JSON'
+      DEPCHK_FAIL_CVSS: '7.0'
+      DEPCHK_CONTINUE_ON_NON_MAIN: 'true'
+      # DAST (ZAP)
+      RUN_DAST_ON_MAIN: 'true'
+      DAST_TARGET_URL: 'http://localhost:8080'
+      # Gitleaks
+      GITLEAKS_VERSION: '8.18.1'
+      # Quality Gate policy
+      QUALITY_GATE_BLOCK_POLICY: 'main'
+
+
+# Triggers live only in the Client pipeline
+trigger:
+  batch: true
+  branches:
+    include: [ main, develop ]
+  paths:
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
+
+# PR (GitHub): build de validation
+pr:
+  autoCancel: true
+  drafts: false
+  branches:
+    include: [main, develop]
+  paths:
+    include: ['backend/pom.xml', 'backend/src/**']
+    exclude: ['docs/**', 'README.md', '.github/**', '.devcontainer/**', '**/*.md']
+
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
+pool:
+  vmImage: '$(vmImage)'
+
+stages:
+  - stage: quality_security
+    displayName: 'Quality & Security'
+    jobs:
+      - job: unit_tests
+        steps:
+          - template: backend/azure/templates/tests-unitaires.yml@cloudflowTemplates
+            parameters:
+              backendDir: 'backend'
+              mvnArgs: '-B -ntp'
+              testResultsGlob: 'backend/target/surefire-reports/*.xml'
+
+      - job: sonarcloud
+        dependsOn: unit_tests
+        condition: succeeded()
+        steps:
+          - template: backend/azure/templates/sonarcloud.yml@cloudflowTemplates
+            parameters:
+              backendDir: 'backend'
+              sonarHostUrl: '$(SONAR_HOST_URL)'
+              sonarOrg: '$(SONAR_ORG)'
+              projectKey: '$(SONAR_PROJECT_KEY)'
+              tokenVarName: 'SONAR_TOKEN'
+              blockOnQualityGate: 'true'
+              jacocoXmlPath: 'target/site/jacoco/jacoco.xml'
+              junitReportPath: 'target/surefire-reports'
+
+  - stage: security_scans
+    dependsOn: quality_security
+    jobs:
+      - job: sast_depcheck
+        steps:
+          - template: backend/azure/templates/sast-depcheck.yml@cloudflowTemplates
+            parameters:
+              backendDir: 'backend'
+              depcheckVersion: '$(DEPCHK_VERSION)'
+              formats: '$(DEPCHK_FORMATS)'
+              failCvss: '$(DEPCHK_FAIL_CVSS)'
+              dataDir: '$(DEPCHK_DATA_DIR)'
+              suppressionPath: ''
+              nvdApiKeyVarName: 'NVD_API_KEY'
+              autoupdateOnMain: 'true'
+              continueOnNonMain: '$(DEPCHK_CONTINUE_ON_NON_MAIN)'
+              publishArtifacts: 'true'
+
+      - job: gitleaks
+        steps:
+          - template: backend/azure/templates/secret-scan-gitleaks.yml@cloudflowTemplates
+            parameters:
+              gitleaksVersion: '$(GITLEAKS_VERSION)'
+              jsonReportName: '$(GITLEAKS_REPORT_JSON)'
+              sarifReportName: '$(GITLEAKS_REPORT_SARIF)'
+              blockOnMainWhenLeaks: 'true'
+              useConfigFile: 'true'
+
+  - stage: build_and_push
+    displayName: 'Build & Push (Jib → ECR)'
+    dependsOn: security_scans
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: jib
+        steps:
+          - template: backend/azure/templates/jib-ecr.yml@cloudflowTemplates
+            parameters:
+              backendDir: 'backend'
+              awsServiceConnection: '$(AWS_SERVICE_CONNECTION)'
+              awsRegion: '$(AWS_REGION)'
+              ecrRepository: '$(ECR_REPOSITORY)'
+              branchTagMap: 'main=main-latest,develop=dev-latest'
+              publishJarArtifact: 'true'
+
+  - stage: dast
+    displayName: 'DAST (ZAP baseline)'
+    dependsOn: build_and_push
+    condition: and(succeeded(), eq(variables['RUN_DAST_ON_MAIN'], 'true'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: zap
+        steps:
+          - template: backend/azure/templates/dast-zap.yml@cloudflowTemplates
+            parameters:
+              backendDir: 'backend'
+              targetUrl: '$(DAST_TARGET_URL)'
+              startupProfile: 'e2e'
+              startupWaitSeconds: 60
+              publishArtifacts: 'true'
+
