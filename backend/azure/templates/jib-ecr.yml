@@ -35,6 +35,8 @@ parameters:
 
 steps:
 
+  - checkout: self
+
   - script: chmod +x mvnw
     displayName: 'Fix exec bit for mvnw'
     workingDirectory: ${{ parameters.backendDir }}
@@ -127,5 +129,4 @@ steps:
     inputs:
       PathtoPublish: '${{ parameters.backendDir }}/target'
       ArtifactName: 'backend-target'
-      publishLocation: 'Container'
     condition: eq('${{ parameters.publishJarArtifact }}', 'true')
