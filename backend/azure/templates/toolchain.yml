@@ -13,6 +13,8 @@ parameters:
     default: 'backend'
 
 steps:
+  - checkout: self
+
   - task: JavaToolInstaller@0
     displayName: 'Install Java ${{ parameters.jdkVersion }}'
     inputs:
@@ -27,4 +29,3 @@ steps:
       ./mvnw -v
     displayName: 'Verify Java & Maven wrapper'
     workingDirectory: ${{ parameters.backendDir }}
-
