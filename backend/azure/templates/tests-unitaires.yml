@@ -18,6 +18,8 @@ parameters:
 
 steps:
 
+  - checkout: self
+
   - script: |
       ./mvnw ${{ parameters.mvnArgs }} clean test
     displayName: 'Maven test'
@@ -30,4 +32,3 @@ steps:
       testRunTitle: 'Unit Tests'
       failTaskOnFailedTests: true
     condition: always()
-
