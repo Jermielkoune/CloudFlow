@@ -61,7 +61,5 @@ steps:
 
   - script: |
       echo "Emplacement actuel : $(pwd)"
-      echo "Contenu du dossier application-client :"
-      ls -F application-client
     displayName: 'Vérification des fichiers'
 
