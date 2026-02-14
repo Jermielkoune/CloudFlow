@@ -50,7 +50,7 @@ resources:
 # Pool
 # -----------------------------------------------------------------------------
 pool:
-  vmImage: '$(vmImage)'
+  vmImage: 'ubuntu-latest'
 
 steps:
   - checkout: Sikaseal
