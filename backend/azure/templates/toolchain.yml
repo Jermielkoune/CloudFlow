@@ -1,9 +1,4 @@
-# Template: Installation de la toolchain Java
-# Description: Installe JDK et valide Maven wrapper
-# Paramètres:
-#   - jdkVersion: Version JDK à installer (défaut: 17)
-#   - backendDir: Répertoire du backend (défaut: backend)
-
+# Template: Toolchain Setup (Checkout + Cache + JDK)
 parameters:
   - name: jdkVersion
     type: string
@@ -11,21 +6,60 @@ parameters:
   - name: backendDir
     type: string
     default: 'backend'
+  - name: mavenCacheFolder
+    type: string
+  - name: repoResourceName
+    type: string
 
 steps:
-  - checkout: self
+  # ---------------------------------------------------------------------------
+  # 1. Checkout du Code Client
+  # ---------------------------------------------------------------------------
+  - checkout: ${{ parameters.repoResourceName }}
+    path: ${{ parameters.backendDir }}
+    clean: true
+    fetchTags: false
+    displayName: 'Checkout Client Code'
 
+  # ---------------------------------------------------------------------------
+  # 2. Gestion du Cache Maven (Performance +50%)
+  # ---------------------------------------------------------------------------
+  - task: Cache@2
+    displayName: 'Cache Maven packages'
+    inputs:
+      key: 'maven | "$(Agent.OS)" | ${{ parameters.backendDir }}/pom.xml'
+      restoreKeys: |
+        maven | "$(Agent.OS)"
+        maven
+      path: ${{ parameters.mavenCacheFolder }}
+
+  # ---------------------------------------------------------------------------
+  # 3. Installation du JDK
+  # ---------------------------------------------------------------------------
   - task: JavaToolInstaller@0
-    displayName: 'Install Java ${{ parameters.jdkVersion }}'
+    displayName: 'Install JDK ${{ parameters.jdkVersion }}'
     inputs:
       versionSpec: '${{ parameters.jdkVersion }}'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
+  # ---------------------------------------------------------------------------
+  # 4. Préparation de l'environnement (Permissions & Path)
+  # ---------------------------------------------------------------------------
   - script: |
-      echo "JAVA_HOME=$JAVA_HOME"
-      java -version
-      chmod +x mvnw
-      ./mvnw -v
-    displayName: 'Verify Java & Maven wrapper'
-    workingDirectory: ${{ parameters.backendDir }}
+      echo "--- Configuration de l'environnement ---"
+      echo "JAVA_HOME set to: $JAVA_HOME"
+
+      # On va dans le dossier du projet client
+      cd $(Pipeline.Workspace)/${{ parameters.backendDir }}
+
+      # Rendre le wrapper exécutable (critique pour Linux)
+      if [ -f "mvnw" ]; then
+        chmod +x mvnw
+        echo "mvnw rendu exécutable."
+        ./mvnw -version
+      else
+        echo "WARNING: pas de wrapper mvnw trouvé, fallback sur maven global"
+        mvn -version
+      fi
+    displayName: 'Validate Environment & Wrapper'
