@@ -1,68 +1,70 @@
 # Template: Toolchain Setup (Checkout + Cache + JDK)
 parameters:
+  - name: workingDir
+    type: string
   - name: jdkVersion
     type: string
     default: '17'
-  - name: backendDir
+  - name: mavenCachePath
     type: string
-    default: 'backend'
-  - name: mavenCacheFolder
-    type: string
+    default: $(Pipeline.Workspace)/.m2/repository
 
 steps:
   # ---------------------------------------------------------------------------
-  # 1. Création explicite du dossier de cache
+  # 1. Création silencieuse du dossier de cache
   # ---------------------------------------------------------------------------
-  - bash: |
-      echo "Création du dossier de cache local : ${{ parameters.mavenCacheFolder }}"
-      mkdir -p ${{ parameters.mavenCacheFolder }}
-    displayName: 'Init Maven Cache Folder'
+  - bash: mkdir -p ${{ parameters.mavenCachePath }}
+    displayName: 'Init Cache System'
 
   # ---------------------------------------------------------------------------
-  # 2. Gestion du Cache Maven (Performance +50%)
+  # 2. Gestion du Cache Maven
   # ---------------------------------------------------------------------------
   - task: Cache@2
-    displayName: 'Cache Maven packages'
     inputs:
-      key: 'maven | "$(Agent.OS)" | $(Pipeline.Workspace)/${{ parameters.backendDir }}/pom.xml'
+      key: 'maven | "$(Agent.OS)" | ${{ parameters.workingDir }}/pom.xml'
       restoreKeys: |
         maven | "$(Agent.OS)"
         maven
-      path: ${{ parameters.mavenCacheFolder }}
+      path: ${{ parameters.mavenCachePath }}
+    displayName: 'Mount Maven Cache'
 
   # ---------------------------------------------------------------------------
   # 3. Installation du JDK
   # ---------------------------------------------------------------------------
   - task: JavaToolInstaller@0
-    displayName: 'Install JDK'
     inputs:
       versionSpec: '${{ parameters.jdkVersion }}'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
+    displayName: 'Setup JDK ${{ parameters.jdkVersion }}'
 
   # ---------------------------------------------------------------------------
   # 4. Préparation de l'environnement (Permissions & Path)
   # ---------------------------------------------------------------------------
   - bash: |
       set -euo pipefail
+      echo "--- VÉRIFICATION DE LA TOOLCHAIN ---"
 
-      BACKEND_DIR="${{ parameters.backendDir }}"
-      CACHE_PATH="${{ parameters.mavenCacheFolder }}"
+      echo "Configuration Maven :"
+      echo "   Cache Path cible : ${{ parameters.mavenCachePath }}"
+      echo "   Taille du cache  : $(du -sh ${{ parameters.mavenCachePath }} 2>/dev/null || echo 'Vide/Inexistant')"
 
-      echo "--- Configuration de la Toolchain ---"
-      echo "JAVA_HOME : $JAVA_HOME"
-      echo "Cache Maven ciblé : $CACHE_PATH"
+      echo "Configuration Java :"
+      echo "   Version demandée : ${{ parameters.jdkVersion }}"
+      echo "   JAVA_HOME actuel : $JAVA_HOME"
 
-      echo "##vso[task.setvariable variable=MAVEN_OPTS]-Dmaven.repo.local=$CACHE_PATH"
-      cd "$(Pipeline.Workspace)/$BACKEND_DIR"
-
-      # Rendre le wrapper exécutable (critique pour Linux)
-      if [ -f "mvnw" ]; then
-        chmod +x mvnw
-        echo "mvnw rendu exécutable."
-        ./mvnw -version
+      echo "Vérification du Wrapper :"
+      if [ -f "${{ parameters.workingDir }}/mvnw" ]; then
+        chmod +x ${{ parameters.workingDir }}/mvnw
+        echo "   Wrapper 'mvnw' trouvé et rendu exécutable."
+        echo "   Version du wrapper :"
+        ${{ parameters.workingDir }}/mvnw -version | head -n 1
       else
-        echo "WARNING: pas de wrapper mvnw trouvé, fallback sur maven global"
-        mvn -version
+        echo "   Wrapper 'mvnw' ABSENT dans ${{ parameters.workingDir }}."
+        echo "   Utilisation de Maven global :"
+        mvn -version | head -n 1
       fi
-    displayName: 'Validate Environment & Wrapper'
+
+      echo "##vso[task.setvariable variable=MAVEN_OPTS]-Dmaven.repo.local=${{ parameters.mavenCachePath }}"
+      echo "--- SETUP TERMINÉ ---"
+    displayName: 'Finalize & Audit Environment'

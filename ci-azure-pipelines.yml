@@ -1,28 +1,6 @@
 # Pipeline orchestrateur CI Backend - Version templateisée
 name: $(Date:yyyyMMdd)$(Rev:.r)
 
-parameters:
-  - name: BrancheCible
-    displayName: "Branche à utiliser"
-    type: string
-    default: 'refs/heads/main'
-# -----------------------------------------------------------------------------
-# Variables globales
-# -----------------------------------------------------------------------------
-variables:
-  - name: BACKEND_DIR
-    value: 'application-client'
-  - name: MAVEN_CACHE_FOLDER
-    value: $(Pipeline.Workspace)/.m2/repository
-  - name: vmImage
-    value: 'ubuntu-latest'
-
-# -----------------------------------------------------------------------------
-# Pool
-# -----------------------------------------------------------------------------
-pool:
-  vmImage: '$(vmImage)'
-
 # -----------------------------------------------------------------------------
 # Déclencheurs
 # -----------------------------------------------------------------------------
@@ -33,6 +11,8 @@ resources:
   repositories:
     - repository: Sikaseal
       endpoint: Jermielkoune-github-connexion-auth
+      name: Jermielkoune/sikaseal
+      type: github
       trigger:
         branches:
           include: [ main, feature/*, bugfix/*, releases/* ]
@@ -40,55 +20,72 @@ resources:
         paths:
           include: [ src/, pom.xml ]
           exclude: [ README.md, .gitignore ]
-      pr:
-        drafts: false
-        branches:
-          include: [ main, releases/*]
-          exclude: [ release/old* ]
-        paths:
-          include: [ src/, pom.xml ]
-          exclude: [ README.md, .gitignore ]
-      name: Jermielkoune/sikaseal
-      ref: ${{ parameters.BrancheCible }}
-      type: github
+      # NB : Pour déclencher le pipeline cloudflow lors d'une PR sur le repo client externe, on doit aller dans
+      # l'interface de GitHub (ou Azure Repos) du projet Sikaseal et configurer une Branch Policy (Politique de branche)
+      # qui exige le succès de votre pipeline CloudFlow
 
+# -----------------------------------------------------------------------------
+# Variables globales
+# -----------------------------------------------------------------------------
+variables:
+  # Il vaut mieux utiliser un variable group pour la config global (vmImage,...)
+  - group: cloudflow-global-config
+
+  - name: MAVEN_CACHE_FOLDER
+    value: $(Pipeline.Workspace)/.m2/repository
+  - name: CODE_SOURCE_DIR
+    value: $(resources.repositories.Sikaseal.name)
+
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
+pool:
+  vmImage: '$(vmImage)'
 
 # -----------------------------------------------------------------------------
 # Stages
 # -----------------------------------------------------------------------------
 stages:
   # ---------------------------------------------------------------------------
-  # Stage 1 – Toolchain Java uniquement
+  # Stage 1 – Toolchain Java
   # ---------------------------------------------------------------------------
-  - stage: setup_toolchain
-    displayName: 'Smart Detect & Setup'
+  - stage: Setup
+    displayName: 'Smart Setup'
     jobs:
-      - job: prepare_env
-        displayName: 'Prepare Environment'
+      - job: Toolchain
         steps:
+          - bash: |
+              echo "=================================================================="
+              echo "DÉMARRAGE DU PIPELINE CLOUDFLOW"
+              echo "=================================================================="
+              echo "Build ID       : $(Build.BuildId)"
+              echo "Lancé par      : $(Build.RequestedFor)"
+              echo "Branche        : $(Build.SourceBranchName)"
+              echo "Commit         : $(Build.SourceVersion)"
+              echo "Agent OS       : $(Agent.OS)"
+              echo "Dossier Travail: $(System.DefaultWorkingDirectory)"
+              echo "=================================================================="
+            displayName: 'Display Build Context'
+
           - checkout: self
-            displayName: 'Checkout CloudFlow Logic'
+            displayName: 'Load Templates'
 
           - checkout: Sikaseal
-            path: $(BACKEND_DIR)
+            path: s/$(CODE_SOURCE_DIR)
             clean: true
             fetchTags: false
-            displayName: 'Checkout code client'
+
+          # Dans la vision finale, ceci sera remplacé par l'injection de variable par l'App Analyzer
           - bash: |
               set -euo pipefail
-              PROJECT_PATH="$(Pipeline.Workspace)/$(BACKEND_DIR)"
-              if [ -f "$PROJECT_PATH/pom.xml" ]; then
-                VERSION_JAVA=$(grep -oPm1 '(?<=<java.version>)[^<]+' "$PROJECT_PATH/pom.xml" || echo "17")
-                echo "Version Java détectée: $VERSION_JAVA" 
-              else
-                echo "Pas de pom.xml trouvé, fallback sur Java 17"
-                VERSION_JAVA="17"
+              POM_PATH="$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/pom.xml"
+              if [ -f "$POM_PATH" ]; then
+                DETECTED_VERSION=$(grep -oPm1 "(?<=<java.version>)[^<]+" "$POM_PATH" || echo "17")
+                echo "##vso[task.setvariable variable=DETECTED_JDK]$DETECTED_VERSION"
               fi
-              echo "##vso[task.setvariable variable=JDK_VERSION]$VERSION_JAVA"
-            displayName: 'Détection version Java'
+            displayName: 'Auto-detect Java Version'
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
-              jdkVersion: '$(JDK_VERSION)'
-              backendDir: '$(BACKEND_DIR)'
-              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+              jdkVersion: '$(DETECTED_JDK)'
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
