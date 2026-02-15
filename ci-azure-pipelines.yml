@@ -10,12 +10,18 @@ parameters:
 # Variables globales
 # -----------------------------------------------------------------------------
 variables:
-  - name: Branche
-    value: $[ resources.repositories.Sikaseal.ref ]
-  - name: Commit
-    value: $[ resources.repositories.Sikaseal.version ]
-  - name: Nom
-    value: $[ resources.repositories.Sikaseal.name ]
+  - name: BACKEND_DIR
+    value: 'application-client'
+  - name: MAVEN_CACHE_FOLDER
+    value: $(Pipeline.Workspace)/.m2/repository
+  - name: vmImage
+    value: 'ubuntu-latest'
+
+# -----------------------------------------------------------------------------
+# Pool
+# -----------------------------------------------------------------------------
+pool:
+  vmImage: '$(vmImage)'
 
 # -----------------------------------------------------------------------------
 # Déclencheurs
@@ -46,20 +52,34 @@ resources:
       ref: ${{ parameters.BrancheCible }}
       type: github
 
+
 # -----------------------------------------------------------------------------
-# Pool
+# Stages
 # -----------------------------------------------------------------------------
-pool:
-  vmImage: 'ubuntu-latest'
+stages:
+  # ---------------------------------------------------------------------------
+  # Stage 1 – Toolchain Java uniquement
+  # ---------------------------------------------------------------------------
+  - stage: setup_toolchain
+    displayName: 'Smart Detect & Setup'
+    jobs:
+      - job: prepare_env
+        displayName: 'Prepare Environment'
+        steps:
+          - checkout: self
+            displayName: '1. Checkout CloudFlow Logic'
 
-steps:
-  - checkout: Sikaseal
-    clean: true #pas forcément necessaire puisqu'on utilise un microsoft hosted pool
-    path: application-client # Le code sera dans le dossier 'application-client'
-    fetchTags: false # Gain de vitesse : on ignore les tags pour ce build
-    displayName: 'Checkout du projet Sikaseal (sans les tags)'
+          - checkout: Sikaseal
+            path: temp_project
+            displayName: '2. Pre-checkout pour détection'
+          - bash: |
+              VERSION_JAVA=$(grep -oPm1 "(?<=<java.version>)[^<]+" temp_project/pom.xml || echo "17")
+              echo "##vso[task.setvariable variable=JDK_VERSION]$VERSION_JAVA"
+            displayName: '3. Détection de la version Java'
 
-  - script: |
-      echo "Emplacement actuel : $(pwd)"
-    displayName: 'Vérification des fichiers'
-
+          - template: backend/azure/templates/toolchain.yml
+            parameters:
+              jdkVersion: '$(JDK_VERSION)'
+              backendDir: '$(BACKEND_DIR)'
+              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+              repoResourceName: 'Sikaseal'
