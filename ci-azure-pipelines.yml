@@ -79,6 +79,7 @@ stages:
               PROJECT_PATH="$(Pipeline.Workspace)/$(BACKEND_DIR)"
               if [ -f "$PROJECT_PATH/pom.xml" ]; then
                 VERSION_JAVA=$(grep -oPm1 '(?<=<java.version>)[^<]+' "$PROJECT_PATH/pom.xml" || echo "17")
+                echo "Version Java détectée: $VERSION_JAVA" 
               else
                 echo "Pas de pom.xml trouvé, fallback sur Java 17"
                 VERSION_JAVA="17"

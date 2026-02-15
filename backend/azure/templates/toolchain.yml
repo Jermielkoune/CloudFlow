@@ -11,7 +11,15 @@ parameters:
 
 steps:
   # ---------------------------------------------------------------------------
-  # 1. Gestion du Cache Maven (Performance +50%)
+  # 1. Création explicite du dossier de cache
+  # ---------------------------------------------------------------------------
+  - bash: |
+      echo "Création du dossier de cache local : ${{ parameters.mavenCacheFolder }}"
+      mkdir -p ${{ parameters.mavenCacheFolder }}
+    displayName: 'Init Maven Cache Folder'
+
+  # ---------------------------------------------------------------------------
+  # 2. Gestion du Cache Maven (Performance +50%)
   # ---------------------------------------------------------------------------
   - task: Cache@2
     displayName: 'Cache Maven packages'
@@ -26,7 +34,7 @@ steps:
   # 3. Installation du JDK
   # ---------------------------------------------------------------------------
   - task: JavaToolInstaller@0
-    displayName: 'Install JDK ${{ parameters.jdkVersion }}'
+    displayName: 'Install JDK'
     inputs:
       versionSpec: '${{ parameters.jdkVersion }}'
       jdkArchitectureOption: 'x64'
@@ -39,14 +47,13 @@ steps:
       set -euo pipefail
 
       BACKEND_DIR="${{ parameters.backendDir }}"
-      if [ -z "$BACKEND_DIR" ]; then
-        BACKEND_DIR="backend"
-      fi
+      CACHE_PATH="${{ parameters.mavenCacheFolder }}"
 
-      echo "--- Configuration pour : $BACKEND_DIR ---"
-      echo "JAVA_HOME set to: $JAVA_HOME"
+      echo "--- Configuration de la Toolchain ---"
+      echo "JAVA_HOME : $JAVA_HOME"
+      echo "Cache Maven ciblé : $CACHE_PATH"
 
-      # On va dans le dossier du projet client
+      echo "##vso[task.setvariable variable=MAVEN_OPTS]-Dmaven.repo.local=$CACHE_PATH"
       cd "$(Pipeline.Workspace)/$BACKEND_DIR"
 
       # Rendre le wrapper exécutable (critique pour Linux)
