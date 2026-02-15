@@ -8,26 +8,15 @@ parameters:
     default: 'backend'
   - name: mavenCacheFolder
     type: string
-  - name: repoResourceName
-    type: string
 
 steps:
   # ---------------------------------------------------------------------------
-  # 1. Checkout du Code Client
-  # ---------------------------------------------------------------------------
-  - checkout: ${{ parameters.repoResourceName }}
-    path: ${{ parameters.backendDir }}
-    clean: true
-    fetchTags: false
-    displayName: 'Checkout Client Code'
-
-  # ---------------------------------------------------------------------------
-  # 2. Gestion du Cache Maven (Performance +50%)
+  # 1. Gestion du Cache Maven (Performance +50%)
   # ---------------------------------------------------------------------------
   - task: Cache@2
     displayName: 'Cache Maven packages'
     inputs:
-      key: 'maven | "$(Agent.OS)" | ${{ parameters.backendDir }}/pom.xml'
+      key: 'maven | "$(Agent.OS)" | $(Pipeline.Workspace)/${{ parameters.backendDir }}/pom.xml'
       restoreKeys: |
         maven | "$(Agent.OS)"
         maven
@@ -47,7 +36,7 @@ steps:
   # 4. Préparation de l'environnement (Permissions & Path)
   # ---------------------------------------------------------------------------
   - script: |
-      echo "--- Configuration de l'environnement ---"
+      echo "--- Configuration pour : ${{ parameters.backendDir }} ---"
       echo "JAVA_HOME set to: $JAVA_HOME"
 
       # On va dans le dossier du projet client
