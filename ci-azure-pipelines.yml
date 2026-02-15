@@ -85,7 +85,7 @@ stages:
               fi
             displayName: 'Auto-detect Java Version'
 
-          - template: templates/toolchain.yml
+          - template: backend/azure/templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
