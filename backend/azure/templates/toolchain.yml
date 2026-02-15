@@ -35,12 +35,19 @@ steps:
   # ---------------------------------------------------------------------------
   # 4. Préparation de l'environnement (Permissions & Path)
   # ---------------------------------------------------------------------------
-  - script: |
-      echo "--- Configuration pour : ${{ parameters.backendDir }} ---"
+  - bash: |
+      set -euo pipefail
+
+      BACKEND_DIR="${{ parameters.backendDir }}"
+      if [ -z "$BACKEND_DIR" ]; then
+        BACKEND_DIR="backend"
+      fi
+
+      echo "--- Configuration pour : $BACKEND_DIR ---"
       echo "JAVA_HOME set to: $JAVA_HOME"
 
       # On va dans le dossier du projet client
-      cd $(Pipeline.Workspace)/${{ parameters.backendDir }}
+      cd "$(Pipeline.Workspace)/$BACKEND_DIR"
 
       # Rendre le wrapper exécutable (critique pour Linux)
       if [ -f "mvnw" ]; then
