@@ -36,7 +36,7 @@ steps:
       versionSpec: '${{ parameters.jdkVersion }}'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
-    displayName: 'Setup JDK ${{ parameters.jdkVersion }}'
+    displayName: 'Setup JDK'
 
   # ---------------------------------------------------------------------------
   # 4. Préparation de l'environnement (Permissions & Path)
