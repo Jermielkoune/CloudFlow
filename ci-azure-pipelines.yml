@@ -91,6 +91,7 @@ stages:
                 fi
               fi
               echo "Version Java détectée: $FINAL_VERSION"
+              echo "##vso[task.setvariable variable=DETECTED_JDK]$FINAL_VERSION"
               echo "##vso[task.setvariable variable=DETECTED_JDK;isOutput=true]$FINAL_VERSION"
             name: JavaDetector
             displayName: 'Auto-detect Java Version'
@@ -106,7 +107,7 @@ stages:
     displayName: 'Code Quality & Security'
     dependsOn: Setup
     variables:
-      DETECTED_JDK: $[ stageDependencies.Setup.Setup_Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
+      DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
     jobs:
       - job: Static_Analysis
         displayName: 'Static Analysis'
