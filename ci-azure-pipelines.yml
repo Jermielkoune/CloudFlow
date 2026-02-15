@@ -30,7 +30,6 @@ resources:
 variables:
   # Il vaut mieux utiliser un variable group pour la config global (vmImage,...)
   - group: cloudflow-global-config
-
   - name: MAVEN_CACHE_FOLDER
     value: $(Pipeline.Workspace)/.m2/repository
   - name: CODE_SOURCE_DIR
