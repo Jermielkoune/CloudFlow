@@ -125,3 +125,9 @@ stages:
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+
+          - template: backend/azure/templates/security-sast.yml
+            parameters:
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              severity: 'CRITICAL,HIGH'
+              githubToken: '$(GITHUB_TOKEN)'
