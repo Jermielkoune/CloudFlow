@@ -28,8 +28,11 @@ resources:
 # Variables globales
 # -----------------------------------------------------------------------------
 variables:
-  # Il vaut mieux utiliser un variable group pour la config global (vmImage,...)
   - group: cloudflow-global-config
+  - name: REPO_NOM
+    value: $[ resources.repositories.Sikaseal.name ]
+  - name: REPO_BRANCHE
+    value: $[ resources.repositories.Sikaseal.ref ]
   - name: MAVEN_CACHE_FOLDER
     value: $(Pipeline.Workspace)/.m2/repository
   - name: CODE_SOURCE_DIR
@@ -77,12 +80,17 @@ stages:
           # Dans la vision finale, ceci sera remplacé par l'injection de variable par l'App Analyzer
           - bash: |
               set -euo pipefail
+              echo "Dépôt détecté : $SIKASEAL_NOM"
+              echo "Branche source : $SIKASEAL_REF"
               POM_PATH="$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/pom.xml"
               if [ -f "$POM_PATH" ]; then
                 DETECTED_VERSION=$(grep -oPm1 "(?<=<java.version>)[^<]+" "$POM_PATH" || echo "17")
                 echo "##vso[task.setvariable variable=DETECTED_JDK]$DETECTED_VERSION"
               fi
             displayName: 'Auto-detect Java Version'
+            env:
+              SIKASEAL_NOM: $(REPO_NOM)       # On injecte la variable Azure
+              SIKASEAL_REF: $(REPO_BRANCHE)   # On injecte la branche
 
           - template: backend/azure/templates/toolchain.yml
             parameters:
