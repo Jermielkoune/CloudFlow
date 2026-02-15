@@ -87,6 +87,7 @@ stages:
                 DETECTED_VERSION=$(grep -oPm1 "(?<=<java.version>)[^<]+" "$POM_PATH" || echo "17")
                 echo "##vso[task.setvariable variable=DETECTED_JDK]$DETECTED_VERSION"
               fi
+              echo "Version Java détectée: $DETECTED_VERSION"
             displayName: 'Auto-detect Java Version'
 
           - template: backend/azure/templates/toolchain.yml
