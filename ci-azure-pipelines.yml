@@ -87,7 +87,7 @@ stages:
               echo "##vso[task.setvariable variable=JDK_VERSION]$VERSION_JAVA"
             displayName: 'Détection version Java'
 
-          - template: templates/toolchain.yml
+          - template: backend/azure/templates/toolchain.yml
             parameters:
               jdkVersion: '$(JDK_VERSION)'
               backendDir: '$(BACKEND_DIR)'
