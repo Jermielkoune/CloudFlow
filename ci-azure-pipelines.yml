@@ -94,3 +94,26 @@ stages:
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+  # ---------------------------------------------------------------------------
+  # Stage 2 – Code Quality (STATIC Analysis)
+  # ---------------------------------------------------------------------------
+  - stage: Code_Quality
+    displayName: 'Code Quality & Security'
+    dependsOn: Setup
+    jobs:
+      - job: Static_Analysis
+        displayName: 'Static Analysis (Linting/SAST)'
+        steps:
+          - checkout: self
+          - checkout: Sikaseal
+            path: s/$(CODE_SOURCE_DIR)
+
+          - template: backend/azure/templates/toolchain.yml
+            parameters:
+              jdkVersion: '$(DETECTED_JDK)'
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+
+          - template: backend/azure/templates/quality-check.yml
+            parameters:
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
