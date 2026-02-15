@@ -75,15 +75,14 @@ stages:
             fetchTags: false
             displayName: 'Checkout code client'
           - bash: |
+              set -euo pipefail
               PROJECT_PATH="$(Pipeline.Workspace)/$(BACKEND_DIR)"
-              if [ f- "$PROJECT_PATH/pom.xml" ]; then
-                VERSION_JAVA=$(grep -oPm1 "(?<=<java.version>)[^<]+" "$PROJECT_PATH/pom.xml" || echo "17")
-                echo "Version Java détectée : $VERSION_JAVA"
+              if [ -f "$PROJECT_PATH/pom.xml" ]; then
+                VERSION_JAVA=$(grep -oPm1 '(?<=<java.version>)[^<]+' "$PROJECT_PATH/pom.xml" || echo "17")
               else
                 echo "Pas de pom.xml trouvé, fallback sur Java 17"
                 VERSION_JAVA="17"
               fi
-              
               echo "##vso[task.setvariable variable=JDK_VERSION]$VERSION_JAVA"
             displayName: 'Détection version Java'
 
