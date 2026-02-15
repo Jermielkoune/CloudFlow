@@ -67,19 +67,28 @@ stages:
         displayName: 'Prepare Environment'
         steps:
           - checkout: self
-            displayName: '1. Checkout CloudFlow Logic'
+            displayName: 'Checkout CloudFlow Logic'
 
           - checkout: Sikaseal
-            path: temp_project
-            displayName: '2. Pre-checkout pour détection'
+            path: $(BACKEND_DIR)
+            clean: true
+            fetchTags: false
+            displayName: 'Checkout code client'
           - bash: |
-              VERSION_JAVA=$(grep -oPm1 "(?<=<java.version>)[^<]+" temp_project/pom.xml || echo "17")
+              PROJECT_PATH="$(Pipeline.Workspace)/$(BACKEND_DIR)"
+              if [ f- "$PROJECT_PATH/pom.xml" ]; then
+                VERSION_JAVA=$(grep -oPm1 "(?<=<java.version>)[^<]+" "$PROJECT_PATH/pom.xml" || echo "17")
+                echo "Version Java détectée : $VERSION_JAVA"
+              else
+                echo "Pas de pom.xml trouvé, fallback sur Java 17"
+                VERSION_JAVA="17"
+              fi
+              
               echo "##vso[task.setvariable variable=JDK_VERSION]$VERSION_JAVA"
-            displayName: '3. Détection de la version Java'
+            displayName: 'Détection version Java'
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(JDK_VERSION)'
               backendDir: '$(BACKEND_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
-              repoResourceName: 'Sikaseal'
