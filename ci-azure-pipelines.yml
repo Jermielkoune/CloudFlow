@@ -131,3 +131,29 @@ stages:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               severity: 'CRITICAL,HIGH'
               githubToken: '$(GITHUB_TOKEN)'
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 – Tests Unitaires (Rapide)
+  # ---------------------------------------------------------------------------
+  - stage: Unit_Tests
+    displayName: 'Unit Tests'
+    dependsOn: Code_Quality
+    variables:
+      DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
+    jobs:
+      - job: JUnit
+        displayName: 'Run Junit 6'
+        steps:
+          - checkout: self
+          - checkout: Sikaseal
+            path: s/$(CODE_SOURCE_DIR)
+
+          - template: backend/azure/templates/toolchain.yml
+            parameters:
+              jdkVersion: '$(DETECTED_JDK)'
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+
+          - template: backend/azure/templates/test-unit.yml
+            parameters:
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
