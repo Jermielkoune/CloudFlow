@@ -137,7 +137,9 @@ stages:
   # ---------------------------------------------------------------------------
   - stage: Unit_Tests
     displayName: 'Unit Tests'
-    dependsOn: Code_Quality
+    dependsOn:
+      - Code_Quality
+      - Setup
     variables:
       DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
     jobs:
