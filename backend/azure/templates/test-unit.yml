@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# Template : Tests Unitaires & Couverture
+# Objectif : Valider la logique métier et générer les rapports pour Azure/Sonar
+# ---------------------------------------------------------------------------
+parameters:
+  - name: workingDir
+    type: string
+  - name: mavenCachePath
+    type: string
+    default: $(Pipeline.Workspace)/.m2/repository
+
+steps:
+  - bash: |
+      set -euo pipefail
+      echo "--- Lancement des Tests Unitaires (JUnit 6) ---"
+      cd {{ parameters.workingDir }}
+      ./mvnw -B -ntp clean test jacoco:report \
+      -Dmaven.repo.local=${{ parameters.mavenCachePath }}
+    displayName: 'Run Junit Tests & JaCoCo'
+
+  - task: PublishTestresults@2
+    displayName: 'Publish Tests Results'
+    inputs:
+      testResultsFormat: 'Junit'
+      testResultsFiles: '**/surefire-reports/TEST-*.xml'
+      searchFolder: '${{ parameters.workingDir }}'
+      failTaskOnFailedTests: true
+    condition: always()
+
+  - task: PublishCodeCoverageResults@2
+    displayName: 'Publish Code Coverage'
+    inputs:
+      summaryFileLocation: '${{ parameters.workingDir }}/target/site/jacoco/jacoco.xml'
+      failIfCoverageEmpty: false
+      condition: always()
