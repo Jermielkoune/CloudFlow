@@ -15,7 +15,7 @@ steps:
       echo "--- Lancement des Tests Unitaires (JUnit 6) ---"
       cd {{ parameters.workingDir }}
       ./mvnw -B -ntp clean test jacoco:report \
-      -Dmaven.repo.local=${{ parameters.mavenCachePath }}
+      -Dmaven.repo.local=${{ parameters.mavenCacheFolder }}
     displayName: 'Run Junit Tests & JaCoCo'
 
   - task: PublishTestresults@2
