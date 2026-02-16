@@ -5,7 +5,7 @@
 parameters:
   - name: workingDir
     type: string
-  - name: mavenCachePath
+  - name: mavenCacheFolder
     type: string
     default: $(Pipeline.Workspace)/.m2/repository
 
