@@ -159,3 +159,8 @@ stages:
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+
+          - template: backend/azure/templates/test-integration-h2.yml
+            parameters:
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
