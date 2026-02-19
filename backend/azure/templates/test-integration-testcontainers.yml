@@ -1,0 +1,4 @@
+# ---------------------------------------------------------------------------
+# Template : Tests d'Intégration (Testcontainers)
+# Objectif : Valider le code sur une vraie base de données conteneurisée
+# ---------------------------------------------------------------------------
