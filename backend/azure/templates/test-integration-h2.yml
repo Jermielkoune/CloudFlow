@@ -30,3 +30,9 @@ steps:
       searchFolder: '${{ parameters.workingDir }}'
       failTaskOnFailedTests: true
     condition: always()
+
+  - publish: '${{ parameters.workingDir }}/target/site/jacoco-it'
+    artifact: 'jacoco-it'
+    displayName: 'Publish IT Coverage Artifact'
+    condition: always()
+    continueOnError: true
