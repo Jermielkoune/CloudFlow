@@ -143,7 +143,7 @@ stages:
     variables:
       DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
     jobs:
-      - job: JUnit & IT
+      - job: JUnit_IT
         displayName: 'Run Junit 6'
         steps:
           - checkout: self
