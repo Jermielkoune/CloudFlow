@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# Template : SonarQube / SonarCloud Scan
+# Objectif : Analyser la dette technique, les bugs et les code smells
+# NB : Ce template est agnostic afin de ne pas dépendre des extensions spécifiques du marketplace Azure DevOps
+# ---------------------------------------------------------------------------
+parameters:
+  - name: workingDir
+    type: string
+  - name: mavenCacheFolder
+    type: string
+    default: $(Pipeline.Workspace)/.m2/repository
+  - name: sonarUrl
+    type: string
+    default: 'https://sonarcloud.io' #Modifiable pour un sonarQube interne
+  - name: sonarToken
+    type: string
+  - name: extraArgs
+    type: string
+    default: ''
+
+steps:
+  - bash: |
+      set -euo pipefail
+      echo "--- Lancement de l'analyse Sonar (Agnostique) ---"
+      cd "{{ parameters.workingDir }}
+      ./mvnw -B -ntp compile initialize sonar:sonar \
+      -Dsonar.host.url={{ parameters.sonarUrl }} \
+      -Dsonar.token=$SONAR_TOKEN \
+      -Dsonar.qualitygate.wait=true \
+      -DskipTests \
+      -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
+      ${{ parameters.extraArgs }}
+    displayName: 'Run Sonar Scanner & Wait for Quality Gate'
+    env:
+      SONAR_TOKEN: ${{ parameters.sonarToken }}
