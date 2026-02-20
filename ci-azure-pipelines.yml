@@ -204,4 +204,3 @@ stages:
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
               sonarUrl: 'https://sonarcloud.io'
               sonarToken: '$(SONAR_TOKEN)'
-              extraArgs: '-Dsonar.organization='
