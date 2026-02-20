@@ -22,9 +22,9 @@ steps:
   - bash: |
       set -euo pipefail
       echo "--- Lancement de l'analyse Sonar (Agnostique) ---"
-      cd "{{ parameters.workingDir }}
+      cd "${{ parameters.workingDir }}"
       ./mvnw -B -ntp compile initialize sonar:sonar \
-      -Dsonar.host.url={{ parameters.sonarUrl }} \
+      -Dsonar.host.url=${{ parameters.sonarUrl }} \
       -Dsonar.token=$SONAR_TOKEN \
       -Dsonar.qualitygate.wait=true \
       -DskipTests \
