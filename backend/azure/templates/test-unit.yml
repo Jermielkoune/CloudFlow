@@ -18,7 +18,7 @@ steps:
       -Dmaven.repo.local=${{ parameters.mavenCacheFolder }}
     displayName: 'Run Junit Tests & JaCoCo'
 
-  - task: PublishTestresults@2
+  - task: PublishTestResults@2
     displayName: 'Publish Tests Results'
     inputs:
       testResultsFormat: 'Junit'
@@ -33,3 +33,8 @@ steps:
       summaryFileLocation: '${{ parameters.workingDir }}/target/site/jacoco/jacoco.xml'
       failIfCoverageEmpty: false
       condition: always()
+
+  - publish: '${{ parameters.workingDir }}/target/site/jacoco'
+    artifact: 'jacoco-ut'
+    displayName: 'Publish UT Coverage Artifact'
+    condition: always()
