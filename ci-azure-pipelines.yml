@@ -182,17 +182,21 @@ stages:
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - download: current
-            artifact: 'jacoco-ut'
-            path: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco'
+          - task: DownloadPipelineArtifact@2
             displayName: 'Download UT Coverage'
             continueOnError: true
+            inputs:
+              buildType: 'current'
+              artifact: 'jacoco-ut'
+              targetPath: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco'
 
-          - download: current
-            artifact: 'jacoco-it'
-            path: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco-it'
+          - task: DownloadPipelineArtifact@2
             displayName: 'Download IT Coverage'
             continueOnError: true
+            inputs:
+              buildType: 'current'
+              artifact: 'jacoco-it'
+              targetPath: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco-it'
 
           - template: backend/azure/templates/sonar-scan.yml
             parameters:
