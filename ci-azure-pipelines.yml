@@ -143,7 +143,7 @@ stages:
     variables:
       DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
     jobs:
-      - job: JUnit
+      - job: JUnit & IT
         displayName: 'Run Junit 6'
         steps:
           - checkout: self
@@ -164,3 +164,40 @@ stages:
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 – Code Inspection (SonarQube)
+  # ---------------------------------------------------------------------------
+  - stage: Code_Inspection
+    displayName: 'Sonar Inspection'
+    dependsOn:
+      - Unit_Tests
+    variables:
+      DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
+    jobs:
+      - job: SonarScan
+        displayName: 'Sonar Quality Gate'
+        steps:
+          - checkout: self
+          - checkout: Sikaseal
+            path: s/$(CODE_SOURCE_DIR)
+
+          - download: current
+            artifact: 'jacoco-ut'
+            path: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco'
+            displayName: 'Download UT Coverage'
+            continueOnError: true
+
+          - download: current
+            artifact: 'jacoco-it'
+            path: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco-it'
+            displayName: 'Download IT Coverage'
+            continueOnError: true
+
+          - template: backend/azure/templates/sonar-scan.yml
+            parameters:
+              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
+              sonarUrl: 'https://sonarcloud.io'
+              sonarToken: '$(SONAR_TOKEN)'
+              extraArgs: '-Dsonar.organization='
