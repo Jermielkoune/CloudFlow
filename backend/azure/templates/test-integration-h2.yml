@@ -34,5 +34,5 @@ steps:
   - publish: '${{ parameters.workingDir }}/target/site/jacoco-it'
     artifact: 'jacoco-it'
     displayName: 'Publish IT Coverage Artifact'
-    condition: always()
+    condition: eq(variables['ITCoverageFlags.hasItCoverage'], 'true')
     continueOnError: true
