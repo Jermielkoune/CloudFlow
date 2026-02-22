@@ -174,10 +174,9 @@ stages:
       - Unit_Tests
     variables:
       DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
-      HAS_IT_COVERAGE: $[ stageDependencies.Unit_Tests.JUnit.outputs['ITCoverageFlags.hasItCoverage'] ]
     jobs:
       - job: SonarScan
-        displayName: 'Sonar Quality Gate'
+        displayName: 'Run SonarQube Analysis'
         steps:
           - checkout: self
           - checkout: Sikaseal
@@ -189,25 +188,15 @@ stages:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
 
           - task: DownloadPipelineArtifact@2
-            displayName: 'Download UT Coverage'
-            continueOnError: true
+            displayName: 'Download JaCoCo Report'
             inputs:
-              buildType: 'current'
               artifact: 'jacoco-ut'
-              targetPath: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco'
-
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download IT Coverage'
-            condition: eq(variables.HAS_IT_COVERAGE, 'true')
-            continueOnError: true
-            inputs:
-              buildType: 'current'
-              artifact: 'jacoco-it'
-              targetPath: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/target/site/jacoco-it'
+              targetPath: '$(Pipeline.Workspace)/jacoco-ut'
 
           - template: backend/azure/templates/sonar-scan.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
-              mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
-              sonarUrl: 'https://sonarcloud.io'
-              sonarToken: '$(SONAR_TOKEN)'
+              jacocoReportPath: '$(Pipeline.Workspace)/jacoco-ut/jacoco.xml'
+              sonarProjectKey: 'sikaseal_devops'
+              sonarOrganization: 'jermielkoune'
+              sonarHostUrl: 'https://sonarcloud.io'
