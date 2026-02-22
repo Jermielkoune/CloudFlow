@@ -9,27 +9,33 @@ parameters:
   - name: mavenCacheFolder
     type: string
     default: $(Pipeline.Workspace)/.m2/repository
-  - name: sonarUrl
+  - name: jacocoReportPath
     type: string
-    default: 'https://sonarcloud.io' #Modifiable pour un sonarQube interne
-  - name: sonarToken
+      # Paramètres d'infrastructure injectés par CloudFlow
+  - name: sonarProjectKey
     type: string
-  - name: extraArgs
+  - name: sonarOrganization
     type: string
-    default: ''
+    default: '' # Requis pour SonarCloud
+  - name: sonarHostUrl
+    type: string
+    default: 'https://sonarcloud.io'
 
 steps:
-  - bash: |
-      set -euo pipefail
-      echo "--- Lancement de l'analyse Sonar (Agnostique) ---"
-      cd "${{ parameters.workingDir }}"
-      ./mvnw -B -ntp compile initialize sonar:sonar \
-      -Dsonar.host.url=${{ parameters.sonarUrl }} \
-      -Dsonar.token=$SONAR_TOKEN \
-      -Dsonar.qualitygate.wait=true \
-      -DskipTests \
-      -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
-      ${{ parameters.extraArgs }}
-    displayName: 'Run Sonar Scanner & Wait for Quality Gate'
-    env:
-      SONAR_TOKEN: ${{ parameters.sonarToken }}
+  - task: Maven@3
+    displayName: 'Run SonarQube Analysis'
+    inputs:
+      mavenPomFile: '${{ parameters.workingDir }}/pom.xml'
+      goals:  'initialize sonar:sonar'
+      options: >-
+        -Dmaven.repo.local=${{ parameters.mavenCacheFolder }}
+        -Dsonar.projectKey=${{ parameters.sonarProjectKey }}
+        -Dsonar.organization=${{ parameters.sonarOrganization }}
+        -Dsonar.host.url=${{ parameters.sonarHostUrl }}
+        -Dsonar.login=$(SONAR_TOKEN)
+        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }}
+        -Dsonar.qualitygate.wait=true
+      publishJUnitResults: false
+      javaHomeOption: 'JDKVersion'
+      jdkVersionOption: '1.17'
+      mavenVersionOption: 'Default'
