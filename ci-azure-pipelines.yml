@@ -172,6 +172,7 @@ stages:
     displayName: 'Sonar Inspection'
     dependsOn:
       - Unit_Tests
+      - Setup
     variables:
       DETECTED_JDK: $[ stageDependencies.Setup.Toolchain.outputs['JavaDetector.DETECTED_JDK'] ]
     jobs:
