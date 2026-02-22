@@ -27,7 +27,7 @@ steps:
       echo "--- Lancement de l'analyse Sonar (Agnostique via Wrapper) ---"
       cd "${{ parameters.workingDir }}"
 
-      ./mvnw -B -ntp initialize sonar:sonar \
+      ./mvnw -B -ntp compile initialize sonar:sonar \
         -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
         -Dsonar.projectKey=${{ parameters.sonarProjectKey }} \
         -Dsonar.organization=${{ parameters.sonarOrganization }} \
