@@ -22,22 +22,21 @@ parameters:
     default: 'https://sonarcloud.io'
 
 steps:
-  - task: Maven@3
-    displayName: 'Run SonarQube Analysis'
-    inputs:
-      mavenPomFile: '${{ parameters.workingDir }}/pom.xml'
-      goals:  'initialize sonar:sonar'
-      options: >-
-        -Dmaven.repo.local=${{ parameters.mavenCacheFolder }}
-        -Dsonar.projectKey=${{ parameters.sonarProjectKey }}
-        -Dsonar.organization=${{ parameters.sonarOrganization }}
-        -Dsonar.host.url=${{ parameters.sonarHostUrl }}
-        -Dsonar.login=$(SONAR_TOKEN)
-        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }}
-        -Dsonar.qualitygate.wait=true
-        -Dcheckstyle.skip=true
-      publishJUnitResults: false
-      mavenVersionOption: 'Path'
-      mavenPath: '${{ parameters.workingDir }}/mvnw'
-      javaHomeOption: 'Path'
-      jdkDirectory: '$(JAVA_HOME)'
+  - bash: |
+      set -euo pipefail
+      echo "--- Lancement de l'analyse Sonar (Agnostique via Wrapper) ---"
+      cd "${{ parameters.workingDir }}"
+
+      ./mvnw -B -ntp initialize sonar:sonar \
+        -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
+        -Dsonar.projectKey=${{ parameters.sonarProjectKey }} \
+        -Dsonar.organization=${{ parameters.sonarOrganization }} \
+        -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
+        -Dsonar.login=$SONAR_TOKEN \
+        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }} \
+        -Dsonar.qualitygate.wait=true \
+        -Dcheckstyle.skip=true \
+        -DskipTests
+    displayName: 'Run Sonar Scanner & Wait for Quality Gate'
+    env:
+      SONAR_TOKEN: $(SONAR_TOKEN)
