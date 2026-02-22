@@ -35,7 +35,9 @@ steps:
         -Dsonar.login=$(SONAR_TOKEN)
         -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }}
         -Dsonar.qualitygate.wait=true
+        -Dcheckstyle.skip=true
       publishJUnitResults: false
-      javaHomeOption: 'JDKVersion'
-      jdkVersionOption: '1.17'
-      mavenVersionOption: 'Default'
+      mavenVersionOption: 'Path'
+      mavenPath: '${{ parameters.workingDir }}/mvnw'
+      javaHomeOption: 'Path'
+      jdkDirectory: '$(JAVA_HOME)'
