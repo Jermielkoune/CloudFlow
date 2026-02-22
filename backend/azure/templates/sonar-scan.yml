@@ -32,7 +32,7 @@ steps:
         -Dsonar.projectKey=${{ parameters.sonarProjectKey }} \
         -Dsonar.organization=${{ parameters.sonarOrganization }} \
         -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
-        -Dsonar.login=$SONAR_TOKEN \
+        -Dsonar.token=$SONAR_TOKEN \
         -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }} \
         -Dsonar.qualitygate.wait=true \
         -Dcheckstyle.skip=true \
