@@ -220,10 +220,17 @@ stages:
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - template: backend/azure/templates/docker-build.yml
+          - template: backend/azure/templates/docker-build-to-azure.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               containerRegistry: '$(ACR_CONNECTION_NAME)'
               registryServer: '$(ACR_SERVER_URL)'
               repository: '$(ACR_REPOSITORY_NAME)'
               imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+
+#         - template: templates/docker-build-to-aws.yml
+#           parameters:
+#             workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+#             registryServer: '$(AWS_ECR_SERVER_URL)'
+#             repository: '$(ACR_REPOSITORY_NAME)'
+#             imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
