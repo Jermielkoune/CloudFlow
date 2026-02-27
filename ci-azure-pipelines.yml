@@ -226,3 +226,4 @@ stages:
               containerRegistry: '$(ACR_CONNECTION_NAME)'
               registryServer: '$(ACR_SERVER_URL)'
               repository: '$(ACR_REPOSITORY_NAME)'
+              imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
