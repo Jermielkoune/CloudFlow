@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # Template : Build & Containerization
-# Objectif : Générer le binaire, builder l'image Docker, et vérifier sa sécurité
+# Objectif : Générer le binaire, builder l'image Docker
 # ---------------------------------------------------------------------------
 parameters:
   - name: workingDir

@@ -199,9 +199,9 @@ stages:
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               jacocoReportPath: '$(Pipeline.Workspace)/jacoco-ut/jacoco.xml'
-              sonarProjectKey: 'sikaseal_devops'
-              sonarOrganization: 'jermielkoune'
-              sonarHostUrl: 'https://sonarcloud.io'
+              sonarProjectKey: '$(SONAR_PROJECT_KEY)'
+              sonarOrganization: '$(SONAR_ORG)'
+              sonarHostUrl: '$(SONAR_HOST_URL)'
 
   # ---------------------------------------------------------------------------
   # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
