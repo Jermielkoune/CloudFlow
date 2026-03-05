@@ -2,7 +2,7 @@
 name: $(Date:yyyyMMdd)$(Rev:.r)
 
 # -----------------------------------------------------------------------------
-# Déclencheurs
+# Déclencheurs : Declencheur sur push de develop vers main prochainement
 # -----------------------------------------------------------------------------
 trigger: none
 pr: none
