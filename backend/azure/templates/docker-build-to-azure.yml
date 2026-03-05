@@ -40,6 +40,15 @@ steps:
     env:
       TOKEN: $(SECRET_TOKEN)
 
+  - task: trivy@1
+    displayName: 'Scan Image for Vulnerabilities (Trivy)'
+    inputs:
+      image: '${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}'
+      severity: 'CRITICAL,HIGH'
+      exitCode: '1'
+    env:
+      TRIVY_AUTH_URL: 'https://${{ parameters.registryServer }}'
+
   - task: Docker@2
     displayName: 'Logout from ACR'
     condition: always()
