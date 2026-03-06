@@ -1,0 +1,100 @@
+# Template: Analyse SonarCloud
+# Description: Exécute l'analyse SonarCloud avec Quality Gate optionnelle
+# Paramètres:
+#   - backendDir: Répertoire du backend
+#   - sonarHostUrl: URL SonarCloud (défaut: https://sonarcloud.io)
+#   - sonarOrg: Organisation Sonar
+#   - projectKey: Clé du projet Sonar
+#   - tokenVarName: Nom de la variable contenant le token Sonar (défaut: SONAR_TOKEN)
+#   - blockOnQualityGate: Bloquer si Quality Gate KO (string: 'true'|'false', défaut: 'true')
+#   - blockOnBranches: Branches sur lesquelles bloquer (main|main+develop|none, défaut: main)
+#   - jacocoXmlPath: Chemin relatif du rapport JaCoCo XML
+#   - junitReportPath: Chemin relatif des rapports JUnit
+
+parameters:
+  - name: backendDir
+    type: string
+    default: 'backend'
+  - name: sonarHostUrl
+    type: string
+    default: 'https://sonarcloud.io'
+  - name: sonarOrg
+    type: string
+    default: 'sikaseal'
+  - name: projectKey
+    type: string
+    default: 'sikaseal_cloudflow'
+  - name: tokenVarName
+    type: string
+    default: 'SONAR_TOKEN'
+  - name: blockOnQualityGate
+    type: string
+    default: 'true'
+  - name: blockOnBranches
+    type: string
+    default: 'main'
+  - name: jacocoXmlPath
+    type: string
+    default: 'target/site/jacoco/jacoco.xml'
+  - name: junitReportPath
+    type: string
+    default: 'target/surefire-reports'
+
+steps:
+
+  - checkout: self
+
+  - script: |
+      if [ -f sonar-project.properties ]; then
+        echo "sonar-project.properties found, Maven will load it via properties-maven-plugin"
+      else
+        echo "sonar-project.properties not found, relying on explicit -D properties"
+      fi
+    displayName: 'Check sonar-project.properties presence'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  - script: |
+      ./mvnw -B -ntp clean test -DfailIfNoTests=false
+      ./mvnw -B -ntp -DskipTests=true sonar:sonar \
+        -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
+        -Dsonar.organization=${{ parameters.sonarOrg }} \
+        -Dsonar.projectKey=${{ parameters.projectKey }} \
+        -Dsonar.branch.name="$(Build.SourceBranchName)" \
+        -Dsonar.token="$(${{ parameters.tokenVarName }})" \
+        -Dsonar.java.binaries=target/classes \
+        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoXmlPath }} \
+        -Dsonar.junit.reportPaths=${{ parameters.junitReportPath }}
+    displayName: 'Maven SonarCloud analysis (explicit properties)'
+    workingDirectory: ${{ parameters.backendDir }}
+    env:
+      ${{ parameters.tokenVarName }}: $(${{ parameters.tokenVarName }})
+
+  - script: |
+      echo "Waiting for Quality Gate..."
+      ATTEMPTS=60
+      SLEEP=10
+      BRANCH="$(Build.SourceBranchName)"
+      URL="${{ parameters.sonarHostUrl }}/api/qualitygates/project_status?projectKey=${{ parameters.projectKey }}&branch=${BRANCH}"
+      for i in $(seq 1 $ATTEMPTS); do
+        RESP=$(curl -s -u "$(${{ parameters.tokenVarName }}):" "$URL" || true)
+        echo "Attempt $i: $(echo "$RESP" | tr -d '\n')"
+        if echo "$RESP" | grep -q '"status":"OK"'; then
+          echo "Quality Gate: OK"; exit 0
+        elif echo "$RESP" | grep -q '"status":"ERROR"'; then
+          echo "Quality Gate: FAILED"; exit 1
+        fi
+        sleep $SLEEP
+      done
+      echo "Quality Gate timeout"; exit 2
+    displayName: 'Block on Quality Gate (poll SonarCloud)'
+    condition: |
+      and(
+        succeeded(),
+        eq('${{ parameters.blockOnQualityGate }}', 'true'),
+        or(
+          and(eq(variables['QUALITY_GATE_BLOCK_POLICY'], 'main'), eq(variables['Build.SourceBranch'], 'refs/heads/main')),
+          and(eq(variables['QUALITY_GATE_BLOCK_POLICY'], 'main+develop'), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/develop')))
+        )
+      )
+    env:
+      ${{ parameters.tokenVarName }}: $(${{ parameters.tokenVarName }})
