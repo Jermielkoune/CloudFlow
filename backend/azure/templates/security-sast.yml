@@ -33,7 +33,7 @@ steps:
   - bash: |
       set -e
       echo "--- Installation de Trivy v${{ parameters.trivyVersion }} ---"
-      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(Agent.TempDirectory) v${{ parameters.trivyVersion }}
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -x -s -- -b $(Agent.TempDirectory) v${{ parameters.trivyVersion }}
       TRIVY_BIN=$(Agent.TempDirectory)/trivy
 
       echo "--- Configuration ---"
