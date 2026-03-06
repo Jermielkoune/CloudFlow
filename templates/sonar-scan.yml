@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# Template : SonarQube / SonarCloud Scan
+# Objectif : Analyser la dette technique, les bugs et les code smells
+# NB : Ce template est agnostic afin de ne pas dépendre des extensions spécifiques du marketplace Azure DevOps
+# ---------------------------------------------------------------------------
+parameters:
+  - name: workingDir
+    type: string
+  - name: mavenCacheFolder
+    type: string
+    default: $(Pipeline.Workspace)/.m2/repository
+  - name: jacocoReportPath
+    type: string
+      # Paramètres d'infrastructure injectés par CloudFlow
+  - name: sonarProjectKey
+    type: string
+  - name: sonarOrganization
+    type: string
+    default: '' # Requis pour SonarCloud
+  - name: sonarHostUrl
+    type: string
+    default: 'https://sonarcloud.io'
+
+steps:
+  - bash: |
+      set -euo pipefail
+      echo "--- Lancement de l'analyse Sonar (Agnostique via Wrapper) ---"
+      cd "${{ parameters.workingDir }}"
+
+      ./mvnw -B -ntp compile initialize sonar:sonar \
+        -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
+        -Dsonar.projectKey=${{ parameters.sonarProjectKey }} \
+        -Dsonar.organization=${{ parameters.sonarOrganization }} \
+        -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
+        -Dsonar.token=$SONAR_TOKEN \
+        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }} \
+        -Dsonar.qualitygate.wait=true \
+        -Dcheckstyle.skip=true \
+        -DskipTests
+    displayName: 'Run Sonar Scanner & Wait for Quality Gate'
+    env:
+      SONAR_TOKEN: $(SONAR_TOKEN)
