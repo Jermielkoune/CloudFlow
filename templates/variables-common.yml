@@ -1,0 +1,141 @@
+# Variables communes pour les templates CI backend
+# Surchargées au besoin par le pipeline orchestrateur ou des variable groups
+
+parameters:
+  # Nom du variable group (par défaut)
+  - name: variableGroupName
+    type: string
+    default: 'cloudflow'
+
+  # Type d'agent
+  - name: vmImage
+    type: string
+    default: 'ubuntu-latest'
+
+  # Toolchain
+  - name: JDK_VERSION
+    type: string
+    default: '17'
+
+  # AWS / ECR
+  - name: AWS_REGION
+    type: string
+    default: 'eu-west-3'
+  - name: ECR_REPOSITORY
+    type: string
+    default: 'sikaseal/cloudflow-ecr'
+  - name: AWS_SERVICE_CONNECTION
+    type: string
+    default: 'aws-cloudflow-sc'
+
+  # Sonar
+  - name: SONAR_HOST_URL
+    type: string
+    default: 'https://sonarcloud.io'
+  - name: SONAR_ORG
+    type: string
+    default: 'sikaseal'
+  - name: SONAR_PROJECT_KEY
+    type: string
+    default: 'sikaseal_cloudflow'
+
+  # Dependency-Check
+  - name: DEPCHK_VERSION
+    type: string
+    default: '12.1.1'
+  - name: DEPCHK_FORMATS
+    type: string
+    default: 'JSON'
+    values:
+      - 'JSON'
+      - 'HTML'
+      - 'SARIF'
+  - name: DEPCHK_FAIL_CVSS
+    type: string
+    default: '7.0'
+  - name: DEPCHK_CONTINUE_ON_NON_MAIN
+    type: string
+    default: 'true'
+
+  # DAST (ZAP)
+  - name: RUN_DAST_ON_MAIN
+    type: string
+    default: 'true'
+  - name: DAST_TARGET_URL
+    type: string
+    default: 'http://localhost:8080'
+
+  # Gitleaks
+  - name: GITLEAKS_VERSION
+    type: string
+    default: '8.18.1'
+
+  # Quality Gate policy
+  - name: QUALITY_GATE_BLOCK_POLICY
+    type: string
+    default: 'main'
+    values:
+      - 'main'
+      - 'main+develop'
+      - 'none'
+
+variables:
+  # Variable groups (dynamiques via paramètre)
+  - group: ${{ parameters.variableGroupName }}
+
+  # Répertoires (interne, non exposé)
+  - name: BACKEND_DIR
+    value: 'backend'
+
+  - name: vmImage
+    value: ${{ parameters.vmImage }}
+
+  # Toolchain
+  - name: JDK_VERSION
+    value: ${{ parameters.JDK_VERSION }}
+
+  # AWS / ECR
+  - name: AWS_REGION
+    value: ${{ parameters.AWS_REGION }}
+  - name: ECR_REPOSITORY
+    value: ${{ parameters.ECR_REPOSITORY }}
+  - name: AWS_SERVICE_CONNECTION
+    value: ${{ parameters.AWS_SERVICE_CONNECTION }}
+
+  # Sonar
+  - name: SONAR_HOST_URL
+    value: ${{ parameters.SONAR_HOST_URL }}
+  - name: SONAR_ORG
+    value: ${{ parameters.SONAR_ORG }}
+  - name: SONAR_PROJECT_KEY
+    value: ${{ parameters.SONAR_PROJECT_KEY }}
+
+  # Dependency-Check
+  - name: DEPCHK_VERSION
+    value: ${{ parameters.DEPCHK_VERSION }}
+  - name: DEPCHK_FORMATS
+    value: ${{ parameters.DEPCHK_FORMATS }}
+  - name: DEPCHK_FAIL_CVSS
+    value: ${{ parameters.DEPCHK_FAIL_CVSS }}
+  - name: DEPCHK_DATA_DIR
+    value: '$(Pipeline.Workspace)/depcheck-data'
+
+  # DAST (ZAP)
+  - name: RUN_DAST_ON_MAIN
+    value: ${{ parameters.RUN_DAST_ON_MAIN }}
+  - name: DAST_TARGET_URL
+    value: ${{ parameters.DAST_TARGET_URL }}
+
+  # Gitleaks
+  - name: GITLEAKS_VERSION
+    value: ${{ parameters.GITLEAKS_VERSION }}
+  - name: GITLEAKS_REPORT_JSON
+    value: 'gitleaks-report.json'
+  - name: GITLEAKS_REPORT_SARIF
+    value: 'gitleaks-report.sarif'
+
+  # Quality Gate policy
+  - name: QUALITY_GATE_BLOCK_POLICY
+    value: ${{ parameters.QUALITY_GATE_BLOCK_POLICY }}
+  - name: DEPCHK_CONTINUE_ON_NON_MAIN
+    value: ${{ parameters.DEPCHK_CONTINUE_ON_NON_MAIN }}
