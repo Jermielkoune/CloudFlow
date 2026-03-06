@@ -1,0 +1,132 @@
+# Template: Build & Push vers ECR avec Jib
+# Description: Package l'application, résout tags, authentifie ECR et pousse l'image via Jib
+# Paramètres:
+#   - backendDir: Répertoire du backend
+#   - awsServiceConnection: Nom du service connection AWS
+#   - awsRegion: Région AWS (défaut: eu-west-3)
+#   - ecrRepository: Nom du repository ECR (défaut: sikaseal/cloudflow-ecr)
+#   - tagBranchPatterns: Map des branches vers tags flottants (ex: main→main-latest) [compat]
+#   - branchTagMap: Mapping branches→tags sous forme de chaîne 'main=main-latest,develop=dev-latest'
+#   - publishJarArtifact: Publier le JAR en artefact (défaut: true)
+
+parameters:
+  - name: backendDir
+    type: string
+    default: 'backend'
+  - name: awsServiceConnection
+    type: string
+    default: 'aws-cloudflow-sc'
+  - name: awsRegion
+    type: string
+    default: 'eu-west-3'
+  - name: ecrRepository
+    type: string
+    default: 'sikaseal/cloudflow-ecr'
+  - name: tagBranchPatterns
+    type: object
+    default:
+      main: 'main-latest'
+  - name: branchTagMap
+    type: string
+    default: 'main=main-latest'
+  - name: publishJarArtifact
+    type: string
+    default: 'true'
+
+steps:
+
+  - checkout: self
+
+  - script: chmod +x mvnw
+    displayName: 'Fix exec bit for mvnw'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  # Récupérer l'ACCOUNT_ID AWS et composer le registre ECR
+  - task: AWSShellScript@1
+    displayName: 'Get AWS Account ID and set ECR_REGISTRY'
+    inputs:
+      awsCredentials: '${{ parameters.awsServiceConnection }}'
+      regionName: '${{ parameters.awsRegion }}'
+      scriptType: 'inline'
+      inlineScript: |
+        set -e
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text | tr -d '[:space:]')
+        if [ -z "$ACCOUNT_ID" ]; then
+          echo "##[error]Failed to retrieve AWS Account ID"
+          exit 1
+        fi
+        echo "AWS Account ID: $ACCOUNT_ID"
+        ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ parameters.awsRegion }}.amazonaws.com"
+        echo "ECR Registry: $ECR_REGISTRY"
+        echo "##vso[task.setvariable variable=ECR_REGISTRY]$ECR_REGISTRY"
+
+  # Extraire la version de l'application depuis pom.xml et définir les tags
+  - script: |
+      set -e
+      VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
+      echo "Resolved Maven version: $VERSION"
+      echo "##vso[task.setvariable variable=IMAGE_TAG_VERSION]$VERSION"
+      echo "##vso[task.setvariable variable=IMAGE_TAG_BUILDID]$(Build.BuildId)"
+      BRANCH_NAME="$(Build.SourceBranchName)"
+      BRANCH_TAG=""
+      # Resolve BRANCH_TAG from branchTagMap 'key=value,key=value'
+      IFS=',' read -ra __pairs <<< "${{ parameters.branchTagMap }}"
+      for kv in "${__pairs[@]}"; do
+        key="${kv%%=*}"; val="${kv#*=}"
+        if [ "$BRANCH_NAME" = "$key" ]; then BRANCH_TAG="$val"; fi
+      done
+      echo "##vso[task.setvariable variable=BRANCH_TAG]$BRANCH_TAG"
+    displayName: 'Resolve tags (version, buildId, branch)'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  # Obtenir le mot de passe ECR (token temporaire) pour Jib
+  - task: AWSShellScript@1
+    displayName: 'Get ECR login password and set ECR_PASSWORD'
+    inputs:
+      awsCredentials: '${{ parameters.awsServiceConnection }}'
+      regionName: '${{ parameters.awsRegion }}'
+      scriptType: 'inline'
+      inlineScript: |
+        set -e
+        PASSWORD=$(aws ecr get-login-password)
+        if [ -z "$PASSWORD" ]; then
+          echo "##[error]Failed to retrieve ECR password"
+          exit 1
+        fi
+        echo "##vso[task.setvariable variable=ECR_PASSWORD;isSecret=true]$PASSWORD"
+
+  # Compiler le projet et créer le Fat JAR (nécessaire pour Jib)
+  - script: |
+      set -e
+      echo "Compiling project with production profile..."
+      ./mvnw -B -ntp clean package -Pprod -DskipTests
+    displayName: 'Maven package (production profile)'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  # Construire et pousser l'image via Jib avec multi-tags (appel unique)
+  - script: |
+      set -e
+      BASE_IMAGE="$(ECR_REGISTRY)/${{ parameters.ecrRepository }}"
+      TAG_IMMUTABLE="v$(IMAGE_TAG_VERSION)-$(IMAGE_TAG_BUILDID)"
+      TAG_FLOATING_VERSION="v$(IMAGE_TAG_VERSION)"
+      ADDITIONAL_TAGS="$TAG_FLOATING_VERSION"
+      if [ -n "$(BRANCH_TAG)" ]; then
+        ADDITIONAL_TAGS="$ADDITIONAL_TAGS,$(BRANCH_TAG)"
+      fi
+      echo "Primary tag: ${BASE_IMAGE}:${TAG_IMMUTABLE}"
+      echo "Additional tags: ${ADDITIONAL_TAGS}"
+      ./mvnw -B -ntp \
+        -Djib.to.image="${BASE_IMAGE}:${TAG_IMMUTABLE}" \
+        -Djib.to.tags="${ADDITIONAL_TAGS}" \
+        -Djib.to.auth.username=AWS \
+        -Djib.to.auth.password="$(ECR_PASSWORD)" \
+        jib:build
+    displayName: 'Jib build & push (multi-tags in one call)'
+    workingDirectory: ${{ parameters.backendDir }}
+
+  - task: PublishBuildArtifacts@1
+    displayName: 'Publish backend JAR'
+    inputs:
+      PathtoPublish: '${{ parameters.backendDir }}/target'
+      ArtifactName: 'backend-target'
+    condition: eq('${{ parameters.publishJarArtifact }}', 'true')
