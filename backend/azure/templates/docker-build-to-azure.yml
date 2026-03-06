@@ -56,7 +56,7 @@ steps:
         # Note : On utilise 'image' ici et non 'fs'
         $TRIVY_BIN image \
 #        --severity CRITICAL,HIGH \
-        --severity CRITICAL
+        --severity CRITICAL \
         --exit-code 1 \
         --ignore-unfixed \
         ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}
