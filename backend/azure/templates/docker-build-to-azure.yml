@@ -22,17 +22,14 @@ parameters:
     default: '$(Build.BuildId)'
   - name: trivyVersion
     type: string
-    default: '0.69.0'
+    default: '0.69.3'
 
 steps:
-  - task: Docker@2
-    displayName: 'Login to Azure Container Registry'
-    inputs:
-      command: 'login'
-      containerRegistry: '${{ parameters.containerRegistry }}'
-
   - bash: |
       set -e
+      echo "--- Authentification native sur ACR ---"
+      echo "${{ parameters.registryPassword }}" | docker login ${{ parameters.registryServer }} -u "${{ parameters.registryUsername }}" --password-stdin
+
       echo "--- Initialisation du moteur Docker Buildx ---"
       docker buildx create --use --driver docker-container
 
