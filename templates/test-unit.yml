@@ -1,0 +1,61 @@
+# ---------------------------------------------------------------------------
+# Template : Tests Unitaires & Couverture
+# Objectif : Valider la logique métier et générer les rapports pour Azure/Sonar
+# ---------------------------------------------------------------------------
+parameters:
+  - name: workingDir
+    type: string
+  - name: mavenCacheFolder
+    type: string
+    default: $(Pipeline.Workspace)/.m2/repository
+
+steps:
+  - bash: |
+      set -euo pipefail
+      echo "--- Lancement des Tests Unitaires (JUnit 6) ---"
+      cd ${{ parameters.workingDir }}
+      ./mvnw -B -ntp clean test jacoco:report \
+      -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
+      -Dmaven.test.failure.ignore=true
+
+      echo "--- Vérification des rapports ---"
+      if [ ! -d "target/site/jacoco" ]; then
+        echo "======================================================="
+        echo "INFORMATION CLOUDFLOW : AUCUN TEST DÉTECTÉ"
+        echo "-------------------------------------------------------"
+        echo "Le dossier de couverture JaCoCo n'a pas été généré."
+        echo "Cela signifie que tu n'as pas encore de tests unitaires"
+        echo "ou qu'ils ne respectent pas le nommage (*Test.java)."
+        echo "Cloudflow encourage le TDD ! Un code non testé est un"
+        echo "code en danger."
+        echo "======================================================="
+
+        # Envoie un warning officiel à l'interface Azure DevOps
+        echo "##vso[task.logissue type=warning]Aucun test unitaire n'a généré de rapport de couverture."
+        mkdir -p target/site/jacoco
+        touch target/site/jacoco/dummy.txt
+      else
+        echo "Rapport JaCoCo généré avec succès !"
+      fi
+    displayName: 'Run Junit Tests & JaCoCo'
+
+  - task: PublishTestResults@2
+    displayName: 'Publish Tests Results'
+    inputs:
+      testResultsFormat: 'Junit'
+      testResultsFiles: '**/surefire-reports/TEST-*.xml'
+      searchFolder: '${{ parameters.workingDir }}'
+      failTaskOnFailedTests: true
+    condition: always()
+
+  - task: PublishCodeCoverageResults@2
+    displayName: 'Publish Code Coverage'
+    inputs:
+      summaryFileLocation: '${{ parameters.workingDir }}/target/site/jacoco/jacoco.xml'
+      failIfCoverageEmpty: false
+    condition: always()
+
+  - publish: '${{ parameters.workingDir }}/target/site/jacoco'
+    artifact: 'jacoco-ut'
+    displayName: 'Publish UT Coverage Artifact'
+    condition: always()
