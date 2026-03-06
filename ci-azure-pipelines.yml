@@ -96,7 +96,7 @@ stages:
             name: JavaDetector
             displayName: 'Auto-detect Java Version'
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
@@ -116,17 +116,17 @@ stages:
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
 
-          - template: backend/azure/templates/quality-check.yml
+          - template: templates/quality-check.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
 
-          - template: backend/azure/templates/security-sast.yml
+          - template: templates/security-sast.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               severity: 'CRITICAL,HIGH'
@@ -150,17 +150,17 @@ stages:
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
 
-          - template: backend/azure/templates/test-unit.yml
+          - template: templates/test-unit.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
 
-          - template: backend/azure/templates/test-integration-h2.yml
+          - template: templates/test-integration-h2.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               mavenCacheFolder: '$(MAVEN_CACHE_FOLDER)'
@@ -184,7 +184,7 @@ stages:
             path: s/$(CODE_SOURCE_DIR)
             fetchDepth: 0
 
-          - template: backend/azure/templates/toolchain.yml
+          - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
@@ -195,7 +195,7 @@ stages:
               artifact: 'jacoco-ut'
               targetPath: '$(Pipeline.Workspace)/jacoco-ut'
 
-          - template: backend/azure/templates/sonar-scan.yml
+          - template: templates/sonar-scan.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               jacocoReportPath: '$(Pipeline.Workspace)/jacoco-ut/jacoco.xml'
@@ -220,7 +220,7 @@ stages:
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - template: backend/azure/templates/docker-build-to-azure.yml
+          - template: templates/docker-build-to-azure.yml
             parameters:
               workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
               containerRegistry: '$(ACR_CONNECTION_NAME)'

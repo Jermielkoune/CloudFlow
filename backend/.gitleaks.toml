@@ -1,7 +1,0 @@
-title = "CloudFlow gitleaks config"
-
-[allowlist]
-paths = [
-  '''backend/src/test/resources/application-test\.properties''',
-  '''backend/src/test/java/com/sikaseal/security/jwt/AuthenticationIntegrationTest\.java'''
-]
