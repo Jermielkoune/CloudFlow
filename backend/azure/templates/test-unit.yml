@@ -32,6 +32,11 @@ steps:
 
         # Envoie un warning officiel à l'interface Azure DevOps
         echo "##vso[task.logissue type=warning]Aucun test unitaire n'a généré de rapport de couverture."
+        mkdir -p target/site/jacoco
+        touch target/site/jacoco/dummy.txt
+      else
+        echo "Rapport JaCoCo généré avec succès !"
+      fi
     displayName: 'Run Junit Tests & JaCoCo'
 
   - task: PublishTestResults@2
