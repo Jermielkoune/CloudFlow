@@ -2,7 +2,7 @@
 name: $(Date:yyyyMMdd)$(Rev:.r)
 
 # -----------------------------------------------------------------------------
-# Déclencheurs : Declencheur sur push de develop vers main prochainement
+# Déclencheurs
 # -----------------------------------------------------------------------------
 trigger: none
 pr: none
@@ -15,14 +15,14 @@ resources:
       type: github
       trigger:
         branches:
-          include: [ main, feature/*, bugfix/*, releases/* ]
+          include: [ main, develop]
           exclude: [ release/old* ]
         paths:
           include: [ src/, pom.xml ]
           exclude: [ README.md, .gitignore ]
       # NB : Pour déclencher le pipeline cloudflow lors d'une PR sur le repo client externe, on doit aller dans
       # l'interface de GitHub (ou Azure Repos) du projet Sikaseal et configurer une Branch Policy (Politique de branche)
-      # qui exige le succès de votre pipeline CloudFlow
+      # qui exige le succès de notre pipeline CloudFlow
 
 # -----------------------------------------------------------------------------
 # Variables globales
