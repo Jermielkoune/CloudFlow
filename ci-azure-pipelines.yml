@@ -37,7 +37,6 @@ variables:
     value: $[ resources.repositories.Sikaseal.name ]
   - name: MAVEN_CACHE_FOLDER
     value: $(Pipeline.Workspace)/.m2/repository
-  # Version Java figée (désactive la détection automatique)
   - name: DETECTED_JDK
     value: '21'
 
