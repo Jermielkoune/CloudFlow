@@ -84,9 +84,17 @@ stages:
 
               POM_PATH="$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/pom.xml"
               DEFAULT_VERSION="21"
+              DETECTOR_SCRIPT="$(Build.SourcesDirectory)/scripts/detect_jdk_from_pom.sh"
 
               echo "POM ciblé : $POM_PATH"
-              DETECTED_VERSION="$(bash scripts/detect_jdk_from_pom.sh "$POM_PATH" "$DEFAULT_VERSION")"
+              echo "Script détecteur : $DETECTOR_SCRIPT"
+
+              if [ ! -f "$DETECTOR_SCRIPT" ]; then
+                echo "ERREUR: script détecteur introuvable: $DETECTOR_SCRIPT" >&2
+                exit 2
+              fi
+
+              DETECTED_VERSION="$(bash "$DETECTOR_SCRIPT" "$POM_PATH" "$DEFAULT_VERSION")"
 
               if [ -f "$POM_PATH" ]; then
                 if [ "$DETECTED_VERSION" = "$DEFAULT_VERSION" ]; then
