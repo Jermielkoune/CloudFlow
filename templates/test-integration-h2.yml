@@ -30,8 +30,18 @@ steps:
       searchFolder: '${{ parameters.workingDir }}'
       failTaskOnFailedTests: true
     condition: always()
+    continueOnError: true # NOUVEAU: Empêche l'avertissement jaune si tu n'as pas de tests IT
 
-  - publish: '${{ parameters.workingDir }}/target/site/jacoco-it'
+  # Sauvegarde multi-modules (Au cas où tu ajoutes des tests IT avec couverture plus tard)
+  - task: CopyFiles@2
+    displayName: 'Prepare JaCoCo IT files for Artifact'
+    inputs:
+      SourceFolder: '${{ parameters.workingDir }}'
+      Contents: '**/target/site/jacoco-it/jacoco.xml'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)/jacoco-it'
+    condition: eq(variables['ITCoverageFlags.hasItCoverage'], 'true')
+
+  - publish: '$(Build.ArtifactStagingDirectory)/jacoco-it'
     artifact: 'jacoco-it'
     displayName: 'Publish IT Coverage Artifact'
     condition: eq(variables['ITCoverageFlags.hasItCoverage'], 'true')

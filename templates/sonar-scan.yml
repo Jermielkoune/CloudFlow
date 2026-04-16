@@ -1,7 +1,6 @@
 # ---------------------------------------------------------------------------
 # Template : SonarQube / SonarCloud Scan
 # Objectif : Analyser la dette technique, les bugs et les code smells
-# NB : Ce template est agnostic afin de ne pas dépendre des extensions spécifiques du marketplace Azure DevOps
 # ---------------------------------------------------------------------------
 parameters:
   - name: workingDir
@@ -11,12 +10,11 @@ parameters:
     default: $(Pipeline.Workspace)/.m2/repository
   - name: jacocoReportPath
     type: string
-      # Paramètres d'infrastructure injectés par CloudFlow
   - name: sonarProjectKey
     type: string
   - name: sonarOrganization
     type: string
-    default: '' # Requis pour SonarCloud
+    default: ''
   - name: sonarHostUrl
     type: string
     default: 'https://sonarcloud.io'
@@ -24,9 +22,17 @@ parameters:
 steps:
   - bash: |
       set -euo pipefail
-      echo "--- Lancement de l'analyse Sonar (Agnostique via Wrapper) ---"
+      echo "--- Restauration des rapports JaCoCo Multi-Modules ---"
       cd "${{ parameters.workingDir }}"
+      
+      # On réinjecte physiquement l'arborescence des rapports venant du Stage 3 (Agent précédent)
+      # Ainsi, Sonar trouve les rapports là où il les attend (**/target/site/jacoco/jacoco.xml)
+      if [ -d "$(Pipeline.Workspace)/jacoco-ut" ]; then
+        echo "Injection des fichiers de couverture depuis l'artefact..."
+        cp -a $(Pipeline.Workspace)/jacoco-ut/* . || true
+      fi
 
+      echo "--- Lancement de l'analyse Sonar (Agnostique via Wrapper) ---"
       ./mvnw -B -ntp compile initialize sonar:sonar \
         -Dmaven.repo.local=${{ parameters.mavenCacheFolder }} \
         -Dsonar.projectKey=${{ parameters.sonarProjectKey }} \

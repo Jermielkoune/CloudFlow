@@ -19,23 +19,18 @@ steps:
       -Dmaven.test.failure.ignore=true
 
       echo "--- Vérification des rapports ---"
-      if [ ! -d "target/site/jacoco" ]; then
+      # Recherche dynamique des fichiers jacoco.xml dans les sous-modules
+      REPORT_COUNT=$(find . -name "jacoco.xml" -type f | wc -l)
+
+      if [ "$REPORT_COUNT" -eq 0 ]; then
         echo "======================================================="
         echo "INFORMATION CLOUDFLOW : AUCUN TEST DÉTECTÉ"
         echo "-------------------------------------------------------"
         echo "Le dossier de couverture JaCoCo n'a pas été généré."
-        echo "Cela signifie que tu n'as pas encore de tests unitaires"
-        echo "ou qu'ils ne respectent pas le nommage (*Test.java)."
-        echo "Cloudflow encourage le TDD ! Un code non testé est un"
-        echo "code en danger."
         echo "======================================================="
-
-        # Envoie un warning officiel à l'interface Azure DevOps
         echo "##vso[task.logissue type=warning]Aucun test unitaire n'a généré de rapport de couverture."
-        mkdir -p target/site/jacoco
-        touch target/site/jacoco/dummy.txt
       else
-        echo "Rapport JaCoCo généré avec succès !"
+        echo "Rapports JaCoCo générés avec succès ($REPORT_COUNT trouvés) !"
       fi
     displayName: 'Run Junit Tests & JaCoCo'
 
@@ -51,11 +46,21 @@ steps:
   - task: PublishCodeCoverageResults@2
     displayName: 'Publish Code Coverage'
     inputs:
-      summaryFileLocation: '${{ parameters.workingDir }}/target/site/jacoco/jacoco.xml'
+      # Le ** est crucial pour trouver les fichiers dans tous les sous-modules
+      summaryFileLocation: '${{ parameters.workingDir }}/**/target/site/jacoco/jacoco.xml'
       failIfCoverageEmpty: false
     condition: always()
 
-  - publish: '${{ parameters.workingDir }}/target/site/jacoco'
+  # NOUVEAU : On copie les rapports en préservant l'arborescence des dossiers (domain/, exposition/...)
+  - task: CopyFiles@2
+    displayName: 'Prepare JaCoCo files for Artifact'
+    inputs:
+      SourceFolder: '${{ parameters.workingDir }}'
+      Contents: '**/target/site/jacoco/jacoco.xml'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)/jacoco-ut'
+    condition: always()
+
+  - publish: '$(Build.ArtifactStagingDirectory)/jacoco-ut'
     artifact: 'jacoco-ut'
     displayName: 'Publish UT Coverage Artifact'
     condition: always()
