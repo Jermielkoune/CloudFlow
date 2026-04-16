@@ -33,7 +33,6 @@ steps:
         -Dsonar.organization=${{ parameters.sonarOrganization }} \
         -Dsonar.host.url=${{ parameters.sonarHostUrl }} \
         -Dsonar.token=$SONAR_TOKEN \
-        -Dsonar.coverage.jacoco.xmlReportPaths=${{ parameters.jacocoReportPath }} \
         -Dsonar.qualitygate.wait=true \
         -Dcheckstyle.skip=true \
         -DskipTests
