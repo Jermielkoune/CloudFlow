@@ -54,6 +54,7 @@ steps:
     displayName: 'Build & Push with BuildKit Remote Cache'
     env:
       TOKEN: $(SECRET_TOKEN)
+      DOCKER_CONFIG: $(HOME)/.docker
 
   - bash: |
       set -e
