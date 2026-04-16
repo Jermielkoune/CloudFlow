@@ -77,55 +77,29 @@ stages:
             clean: true
             fetchTags: false
 
-          # Dans la vision finale, ceci sera remplacé par l'injection de variable par l'App Analyzer
           - bash: |
               set -euo pipefail
               echo "Dépôt détecté : $(REPO_NOM)"
               echo "Branche source : $(REPO_BRANCHE)"
 
               POM_PATH="$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/pom.xml"
-              DEFAULT_VERSION="17"
-              FINAL_VERSION="$DEFAULT_VERSION"
+              DEFAULT_VERSION="21"
 
-              extract_prop() {
-                local prop="$1"
-                if [ ! -f "$POM_PATH" ]; then
-                  return 0
-                fi
-                sed -n "s@.*<${prop}>\\([^<]*\\)</${prop}>.*@\\1@p" "$POM_PATH" | head -n 1 | tr -d '[:space:]'
-              }
+              echo "POM ciblé : $POM_PATH"
+              DETECTED_VERSION="$(bash scripts/detect_jdk_from_pom.sh "$POM_PATH" "$DEFAULT_VERSION")"
 
               if [ -f "$POM_PATH" ]; then
-                echo "POM détecté : $POM_PATH"
-
-                DETECTED_RELEASE="$(extract_prop "maven.compiler.release" || true)"
-                DETECTED_JAVA_VERSION="$(extract_prop "java.version" || true)"
-                DETECTED_TARGET="$(extract_prop "maven.compiler.target" || true)"
-                DETECTED_SOURCE="$(extract_prop "maven.compiler.source" || true)"
-
-                # Priorité : release > java.version > target > source > défaut
-                if [ -n "$DETECTED_RELEASE" ]; then
-                  FINAL_VERSION="$DETECTED_RELEASE"
-                  echo "Java détecté via <maven.compiler.release> = $FINAL_VERSION"
-                elif [ -n "$DETECTED_JAVA_VERSION" ]; then
-                  FINAL_VERSION="$DETECTED_JAVA_VERSION"
-                  echo "Java détecté via <java.version> = $FINAL_VERSION"
-                elif [ -n "$DETECTED_TARGET" ]; then
-                  FINAL_VERSION="$DETECTED_TARGET"
-                  echo "Java détecté via <maven.compiler.target> = $FINAL_VERSION"
-                elif [ -n "$DETECTED_SOURCE" ]; then
-                  FINAL_VERSION="$DETECTED_SOURCE"
-                  echo "Java détecté via <maven.compiler.source> = $FINAL_VERSION"
+                if [ "$DETECTED_VERSION" = "$DEFAULT_VERSION" ]; then
+                  echo "Aucune propriété Java standard trouvée dans le POM, valeur par défaut = $DETECTED_VERSION"
                 else
-                  echo "Aucune propriété Java trouvée dans le POM, valeur par défaut = $FINAL_VERSION"
+                  echo "Version Java détectée depuis le POM = $DETECTED_VERSION"
                 fi
               else
-                echo "POM introuvable ($POM_PATH), valeur par défaut = $FINAL_VERSION"
+                echo "POM introuvable, valeur par défaut = $DETECTED_VERSION"
               fi
 
-              echo "Version Java retenue: $FINAL_VERSION"
-              echo "##vso[task.setvariable variable=DETECTED_JDK]$FINAL_VERSION"
-              echo "##vso[task.setvariable variable=DETECTED_JDK;isOutput=true]$FINAL_VERSION"
+              echo "##vso[task.setvariable variable=DETECTED_JDK]$DETECTED_VERSION"
+              echo "##vso[task.setvariable variable=DETECTED_JDK;isOutput=true]$DETECTED_VERSION"
             name: JavaDetector
             displayName: 'Auto-detect Java Version'
 
