@@ -1,0 +1,74 @@
+# templates/docker-build-and-push.yml
+# Template universel pour builder, scanner et pousser une image Docker.
+# 100% Bash, agnostique du fournisseur de cloud.
+parameters:
+  - name: workingDir
+    type: string
+  - name: registryServer
+    type: string
+  - name: registryUsername
+    type: string
+  - name: registryPassword
+    type: string
+    default: ''
+  - name: repository
+    type: string
+  - name: imageTag
+    type: string
+  - name: trivyVersion
+    type: string
+    default: '0.69.3'
+
+steps:
+  - bash: |
+      set -e
+      echo "--- Authentification sur le registre : ${{ parameters.registryServer }} ---"
+      if [ -z "${{ parameters.registryPassword }}" ]; then
+        echo "##[error]Le mot de passe du registre est vide. Authentification impossible."
+        exit 1
+      fi
+      echo "${{ parameters.registryPassword }}" | docker login "${{ parameters.registryServer }}" -u "${{ parameters.registryUsername }}" --password-stdin
+    displayName: 'Login to Container Registry'
+
+  - bash: |
+      set -e
+      echo "--- Initialisation du moteur Docker Buildx ---"
+      docker buildx create --use --driver docker-container
+
+      echo "--- Lancement du Build & Push avec Remote Caching ---"
+      docker buildx build \
+        --platform linux/amd64 \
+        --push \
+        --secret id=TOKEN,env=TOKEN \
+        --cache-from=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache \
+        --cache-to=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,mode=max \
+        -t "${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}" \
+        -f "${{ parameters.workingDir }}/Dockerfile" \
+        "${{ parameters.workingDir }}"
+    displayName: 'Build & Push with BuildKit Remote Cache'
+    env:
+      TOKEN: $(SECRET_TOKEN)
+
+  - bash: |
+      set -e
+      echo "--- Installation de Trivy v${{ parameters.trivyVersion }} ---"
+      curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(Agent.TempDirectory) v${{ parameters.trivyVersion }}
+      TRIVY_BIN=$(Agent.TempDirectory)/trivy
+
+      echo "--- Scan de l'image poussée : ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }} ---"
+      $TRIVY_BIN image \
+        --severity CRITICAL,HIGH \
+        --exit-code 1 \
+        --ignore-unfixed \
+        "${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}"
+    displayName: 'Security Scan: Image Vulnerabilities'
+    env:
+      TRIVY_USERNAME: ${{ parameters.registryUsername }}
+      TRIVY_PASSWORD: ${{ parameters.registryPassword }}
+
+  - bash: |
+      echo "--- Déconnexion du registre : ${{ parameters.registryServer }} ---"
+      docker logout "${{ parameters.registryServer }}"
+    displayName: 'Logout from Container Registry'
+    condition: always()
+
