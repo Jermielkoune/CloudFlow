@@ -22,13 +22,17 @@ parameters:
 steps:
   - bash: |
       set -e
-      echo "--- Authentification sur le registre : ${{ parameters.registryServer }} ---"
-      if [ -z "${{ parameters.registryPassword }}" ]; then
+      echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
+      if [ -z "$MAPPED_PASSWORD" ]; then
         echo "##[error]Le mot de passe du registre est vide. Authentification impossible."
         exit 1
       fi
-      echo "${{ parameters.registryPassword }}" | docker login "${{ parameters.registryServer }}" -u "${{ parameters.registryUsername }}" --password-stdin
+      echo "$MAPPED_PASSWORD" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
     displayName: 'Login to Container Registry'
+    env:
+      REGISTRY_SERVER: ${{ parameters.registryServer }}
+      REGISTRY_USER: ${{ parameters.registryUsername }}
+      MAPPED_PASSWORD: ${{ parameters.registryPassword }}
 
   - bash: |
       set -e
