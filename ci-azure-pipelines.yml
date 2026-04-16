@@ -82,9 +82,11 @@ stages:
               echo "Dépôt détecté : $(REPO_NOM)"
               echo "Branche source : $(REPO_BRANCHE)"
 
-              POM_PATH="$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)/pom.xml"
+              # NB: en multi-checkout, Build.SourcesDirectory peut ne pas pointer sur le repo 'self'.
+              # Pipeline.Workspace/s est la racine stable contenant tous les checkouts.
+              POM_PATH="$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)/pom.xml"
               DEFAULT_VERSION="21"
-              DETECTOR_SCRIPT="$(Build.SourcesDirectory)/scripts/detect_jdk_from_pom.sh"
+              DETECTOR_SCRIPT="$(Pipeline.Workspace)/s/CloudFlow/scripts/detect_jdk_from_pom.sh"
 
               echo "POM ciblé : $POM_PATH"
               echo "Script détecteur : $DETECTOR_SCRIPT"
@@ -114,7 +116,7 @@ stages:
           - template: templates/toolchain.yml
             parameters:
               jdkVersion: '$(DETECTED_JDK)'
-              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
+              workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
   # ---------------------------------------------------------------------------
   # Stage 2 – Code Quality (STATIC Analysis)
   # ---------------------------------------------------------------------------
