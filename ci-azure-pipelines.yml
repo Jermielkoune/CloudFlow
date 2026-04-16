@@ -39,6 +39,8 @@ variables:
     value: $(Pipeline.Workspace)/.m2/repository
   - name: DETECTED_JDK
     value: '21'
+  - name: CLOUD_PROVIDER
+    value: 'AZURE'
 
 # -----------------------------------------------------------------------------
 # Pool
@@ -189,30 +191,35 @@ stages:
   # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
   # ---------------------------------------------------------------------------
   - stage: Containerization
-    displayName: 'Containerization & Image Security'
+    displayName: 'Containerization & Image Scan'
     dependsOn:
       - Code_Inspection
     jobs:
       - job: DockerBuild
-        displayName: 'Build Layered JAR & Docker Image'
+        displayName: 'Build & Push Docker Image to ${{ variables.CLOUD_PROVIDER }}'
         steps:
           - checkout: self
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          - template: templates/docker-build-to-azure.yml
-            parameters:
-              workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
-              containerRegistry: '$(ACR_CONNECTION_NAME)'
-              registryServer: '$(ACR_SERVER_URL)'
-              registryUsername: '$(ACR_USERNAME)'
-              registryPassword: '$(ACR_PASSWORD)'
-              repository: '$(ACR_REPOSITORY_NAME)'
-              imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+          # --- Cas AWS : Utilise le wrapper pour l'authentification éphémère ---
+          - ${{ if eq(variables.CLOUD_PROVIDER, 'AWS') }}:
+            - template: templates/docker-build-to-aws.yml
+              parameters:
+                workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
+                registryServer: '$(REGISTRY_SERVER_URL)'
+                repository: '$(REGISTRY_REPO_NAME)'
+                imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+                awsRegion: '$(AWS_REGION)'
 
-#         - template: templates/docker-build-to-aws.yml
-#           parameters:
-#             workingDir: '$(Build.SourcesDirectory)/$(CODE_SOURCE_DIR)'
-#             registryServer: '$(AWS_ECR_SERVER_URL)'
-#             repository: '$(ACR_REPOSITORY_NAME)'
-#             imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+          # --- Cas AZURE (ou par défaut) : Utilise le wrapper avec identifiants statiques ---
+          - ${{ if ne(variables.CLOUD_PROVIDER, 'AWS') }}:
+            - template: templates/docker-build-to-azure.yml
+              parameters:
+                workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
+                registryServer: '$(REGISTRY_SERVER_URL)'
+                registryUsername: '$(REGISTRY_USERNAME)'
+                registryPassword: '$(REGISTRY_PASSWORD)'
+                repository: '$(REGISTRY_REPO_NAME)'
+                imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+
