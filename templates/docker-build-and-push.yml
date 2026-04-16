@@ -23,11 +23,13 @@ steps:
   - bash: |
       set -e
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
-      if [ -z "$MAPPED_PASSWORD" ]; then
-        echo "##[error]Le mot de passe du registre est vide. Authentification impossible."
-        exit 1
+
+      if [ -z "$REGISTRY_USER" ] || [ -z "$MAPPED_PASSWORD" ]; then
+        echo "Identifiants registry vides : étape de login ignorée (auth gérée en amont)."
+        exit 0
       fi
-      echo "$MAPPED_PASSWORD" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
+
+      echo "$MAPPED_PASSWORD" | docker login "$REGISTRY_SERVER" --username "$REGISTRY_USER" --password-stdin
     displayName: 'Login to Container Registry'
     env:
       REGISTRY_SERVER: ${{ parameters.registryServer }}
