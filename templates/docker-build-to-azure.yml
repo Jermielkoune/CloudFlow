@@ -1,72 +1,25 @@
-# ---------------------------------------------------------------------------
-# Template : Build & Containerization
-# Objectif : Générer le binaire, builder l'image Docker
-# ---------------------------------------------------------------------------
+# templates/docker-build-to-azure.yml
+# Wrapper pour Azure. Appelle le template universel avec les identifiants statiques.
 parameters:
   - name: workingDir
-    type: string
-  - name: containerRegistry
     type: string
   - name: registryServer
     type: string
   - name: registryUsername
     type: string
-    default: ''
   - name: registryPassword
     type: string
-    default: ''
   - name: repository
     type: string
   - name: imageTag
     type: string
-    default: '$(Build.BuildId)'
-  - name: trivyVersion
-    type: string
-    default: '0.69.3'
 
 steps:
-  - bash: |
-      set -e
-      echo "--- Authentification native sur ACR ---"
-      echo "${{ parameters.registryPassword }}" | docker login ${{ parameters.registryServer }} -u "${{ parameters.registryUsername }}" --password-stdin
-
-      echo "--- Initialisation du moteur Docker Buildx ---"
-      docker buildx create --use --driver docker-container
-
-      echo "--- Lancement du Build avec Remote Caching ---"
-      docker buildx build \
-      --push \
-      --secret id=TOKEN,env=TOKEN \
-      --cache-from=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache \
-      --cache-to=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,mode=max \
-      -t ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }} \
-      -f ${{ parameters.workingDir }}/Dockerfile \
-      ${{ parameters.workingDir }}
-    displayName: 'Build & Push with BuildKit Remote Cache'
-    env:
-      TOKEN: $(SECRET_TOKEN)
-
-  - bash: |
-        set -e
-        echo "--- Installation Trivy v${{ parameters.trivyVersion }} ---"
-        curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(Agent.TempDirectory) v${{ parameters.trivyVersion }}
-        TRIVY_BIN=$(Agent.TempDirectory)/trivy
-
-        echo "--- Scan de l'Image : ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }} ---"
-        # Note : On utilise 'image' ici et non 'fs'
-        $TRIVY_BIN image \
-        --severity CRITICAL \
-        --exit-code 1 \
-        --ignore-unfixed \
-        ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}
-    displayName: 'Security Scan: Image Vulnerabilities'
-    env:
-      TRIVY_USERNAME: ${{ parameters.registryUsername }}
-      TRIVY_PASSWORD: ${{ parameters.registryPassword }}
-
-  - task: Docker@2
-    displayName: 'Logout from ACR'
-    condition: always()
-    inputs:
-      command: 'logout'
-      containerRegistry: '${{ parameters.containerRegistry }}'
+  - template: docker-build-and-push.yml
+    parameters:
+      workingDir: ${{ parameters.workingDir }}
+      registryServer: ${{ parameters.registryServer }}
+      registryUsername: ${{ parameters.registryUsername }}
+      registryPassword: ${{ parameters.registryPassword }}
+      repository: ${{ parameters.repository }}
+      imageTag: ${{ parameters.imageTag }}
