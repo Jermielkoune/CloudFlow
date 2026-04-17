@@ -188,9 +188,6 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
   # ---------------------------------------------------------------------------
-  # ---------------------------------------------------------------------------
-  # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
-  # ---------------------------------------------------------------------------
   - stage: Containerization
     displayName: 'Containerization & Image Scan'
     dependsOn:
