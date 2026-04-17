@@ -39,8 +39,6 @@ variables:
     value: $(Pipeline.Workspace)/.m2/repository
   - name: DETECTED_JDK
     value: '21'
-  - name: CLOUD_PROVIDER
-    value: 'AZURE'
 
 # -----------------------------------------------------------------------------
 # Pool
