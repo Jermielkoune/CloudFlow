@@ -188,19 +188,25 @@ stages:
   # ---------------------------------------------------------------------------
   # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
   # ---------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
+  # Stage 5 – Containerization (Docker Build & Trivy Image Scan)
+  # ---------------------------------------------------------------------------
   - stage: Containerization
     displayName: 'Containerization & Image Scan'
     dependsOn:
       - Code_Inspection
     jobs:
-      - job: DockerBuild
-        displayName: 'Build & Push Docker Image to ${{ variables.CLOUD_PROVIDER }}'
+      # ==========================================
+      # JOB 1 : ROUTAGE VERS AWS
+      # ==========================================
+      - job: DockerBuild_AWS
+        displayName: 'Build & Push to AWS ECR'
+        condition: eq(variables['CLOUD_PROVIDER'], 'AWS')
         steps:
           - checkout: self
           - checkout: Sikaseal
             path: s/$(CODE_SOURCE_DIR)
 
-          # --- Cas AWS : Utilise le wrapper pour l'authentification éphémère ---
           - template: templates/docker-build-to-aws.yml
             parameters:
               workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
@@ -209,14 +215,22 @@ stages:
               imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
               awsRegion: '$(AWS_REGION)'
 
-          # --- Cas AZURE (ou par défaut) : Utilise le wrapper avec identifiants statiques ---
+      # ==========================================
+      # JOB 2 : ROUTAGE VERS AZURE
+      # ==========================================
+      - job: DockerBuild_AZURE
+        displayName: 'Build & Push to AZURE ACR'
+        condition: ne(variables['CLOUD_PROVIDER'], 'AWS')
+        steps:
+          - checkout: self
+          - checkout: Sikaseal
+            path: s/$(CODE_SOURCE_DIR)
+
           - template: templates/docker-build-to-azure.yml
             parameters:
-                workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
-                registryServer: '$(REGISTRY_SERVER_URL)'
-                registryUsername: '$(REGISTRY_USERNAME)'
-                registryPassword: '$(REGISTRY_PASSWORD)'
-                repository: '$(REGISTRY_REPO_NAME)'
-                imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
-
-
+              workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
+              registryServer: '$(REGISTRY_SERVER_URL)'
+              registryUsername: '$(REGISTRY_USERNAME)'
+              registryPassword: '$(REGISTRY_PASSWORD)'
+              repository: '$(REGISTRY_REPO_NAME)'
+              imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
