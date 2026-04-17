@@ -18,7 +18,23 @@ parameters:
 steps:
   - bash: |
       set -euo pipefail
-      echo "--- AWS ECR: génération du token + docker login ---"
+      echo "--- AWS identité (sts) + sanity check ECR ---"
+      aws --version
+      aws sts get-caller-identity
+
+      echo "--- Vérification accès ECR au repo '${{ parameters.repository }}' (region=${{ parameters.awsRegion }}) ---"
+      aws ecr describe-repositories --region "${{ parameters.awsRegion }}" --repository-names "${{ parameters.repository }}" >/dev/null
+      echo "OK: le repo ECR est accessible."
+    displayName: 'AWS IAM/ECR Preflight'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_REGION: ${{ parameters.awsRegion }}
+      AWS_DEFAULT_REGION: ${{ parameters.awsRegion }}
+
+  - bash: |
+      set -euo pipefail
+      echo "--- AWS ECR: génération du token ---"
       ECR_TOKEN=$(aws ecr get-login-password --region "${{ parameters.awsRegion }}")
 
       if [ -z "$ECR_TOKEN" ]; then
@@ -27,10 +43,12 @@ steps:
       fi
 
       echo "##vso[task.setvariable variable=SECURE_ECR_TOKEN;issecret=true]$ECR_TOKEN"
-    displayName: 'AWS ECR Login'
+    displayName: 'AWS ECR Token'
     env:
       AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
       AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_REGION: ${{ parameters.awsRegion }}
+      AWS_DEFAULT_REGION: ${{ parameters.awsRegion }}
 
   - template: docker-build-and-push.yml
     parameters:
