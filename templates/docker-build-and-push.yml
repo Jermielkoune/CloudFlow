@@ -33,25 +33,19 @@ steps:
       mkdir -p $(Agent.TempDirectory)/.docker
 
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
-      echo "PASSWORD_VAR_NAME='${PASSWORD_VAR_NAME:-}'"
       PASSWORD_TO_USE="${MAPPED_PASSWORD:-}"
-      # Azure DevOps: les variables runtime $(VAR) sont substituées avant exécution du script.
-      # Pour éviter l'expansion indirecte bash (${!VAR}) (fragile en pipeline), on mappe explicitement les noms supportés.
+      
+      # Correction de la syntaxe Bash : ${VAR} au lieu de $(VAR)
       if [ -z "$PASSWORD_TO_USE" ] && [ "${PASSWORD_VAR_NAME:-}" = "SECURE_ECR_TOKEN" ]; then
-        PASSWORD_TO_USE="$(SECURE_ECR_TOKEN)"
+        PASSWORD_TO_USE="${SECURE_ECR_TOKEN:-}"
       fi
 
-      if [ -z "${REGISTRY_USER:-}" ] || [ -z "${MAPPED_PASSWORD:-}" ]; then
-        # On reteste avec la valeur résolue (paramètre ou variable runtime)
-        if [ -z "${REGISTRY_USER:-}" ] || [ -z "$PASSWORD_TO_USE" ]; then
-          echo "##[error] Identifiants registry manquants (user/password). Impossible de pousser l'image et/ou le cache BuildKit."
-          echo "##[error] Tip: pour AWS/ECR, passe 'registryPasswordVar: SECURE_ECR_TOKEN' au template plutôt que registryPassword: '$(SECURE_ECR_TOKEN)'."
-          exit 1
-        fi
+      if [ -z "${REGISTRY_USER:-}" ] || [ -z "$PASSWORD_TO_USE" ]; then
+        echo "##[error] Identifiants registry manquants (user/password). Impossible de pousser l'image."
+        exit 1
       fi
 
       echo "Login en tant que '$REGISTRY_USER' sur '$REGISTRY_SERVER' (DOCKER_CONFIG isolé)."
-
       echo "$PASSWORD_TO_USE" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
 
       echo "--- Vérification DOCKER_CONFIG (sans secrets) ---"
@@ -68,8 +62,6 @@ steps:
       REGISTRY_USER: ${{ parameters.registryUsername }}
       MAPPED_PASSWORD: ${{ parameters.registryPassword }}
       PASSWORD_VAR_NAME: ${{ parameters.registryPasswordVar }}
-      # Pour le chemin AWS/ECR: rend la variable pipeline disponible comme variable d'environnement Bash.
-      # (Valeur masquée par Azure DevOps car issecret=true.)
       SECURE_ECR_TOKEN: $(SECURE_ECR_TOKEN)
 
   - bash: |
@@ -90,14 +82,10 @@ steps:
       docker buildx ls
 
       echo "--- Lancement du Build & Push avec Remote Caching ---"
-      # NOTE: le 401 sur HEAD en ECR arrive quand BuildKit n'a pas les credentials registry.
-      # On garde DOCKER_CONFIG pour que buildx/buildkit utilisent le même contexte auth que 'docker login'.
 
       CACHE_ARGS=""
       if [ "${{ parameters.enableRemoteCache }}" = "true" ]; then
         echo "Remote cache activé : tentative d'accès au manifest ${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache"
-        # Pré-check non bloquant : si le user n'a pas encore créé le tag buildcache, ou si l'import échoue,
-        # on préfère continuer sans cache plutôt que faire tomber le build.
         docker pull "${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache" >/dev/null 2>&1 || true
         CACHE_ARGS="--cache-from=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,oci-mediatypes=true --cache-to=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,mode=max,oci-mediatypes=true"
       else
@@ -124,6 +112,13 @@ steps:
       curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b $(Agent.TempDirectory) v${{ parameters.trivyVersion }}
       TRIVY_BIN=$(Agent.TempDirectory)/trivy
 
+      # On s'assure que Trivy utilise le même mot de passe que le Login (statique ou dynamique AWS)
+      TRIVY_PWD="${MAPPED_PASSWORD:-}"
+      if [ -z "$TRIVY_PWD" ] && [ -n "${SECURE_ECR_TOKEN:-}" ]; then
+        TRIVY_PWD="${SECURE_ECR_TOKEN:-}"
+      fi
+      export TRIVY_PASSWORD="$TRIVY_PWD"
+
       echo "--- Scan de l'image poussée : ${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }} ---"
       $TRIVY_BIN image \
         --severity CRITICAL,HIGH \
@@ -133,7 +128,8 @@ steps:
     displayName: 'Security Scan: Image Vulnerabilities'
     env:
       TRIVY_USERNAME: ${{ parameters.registryUsername }}
-      TRIVY_PASSWORD: ${{ parameters.registryPassword }}
+      MAPPED_PASSWORD: ${{ parameters.registryPassword }}
+      SECURE_ECR_TOKEN: $(SECURE_ECR_TOKEN)
 
   - bash: |
       echo "--- Déconnexion du registre : ${{ parameters.registryServer }} ---"
