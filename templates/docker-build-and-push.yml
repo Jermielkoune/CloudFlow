@@ -11,6 +11,9 @@ parameters:
   - name: registryPassword
     type: string
     default: ''
+  - name: registryPasswordVar
+    type: string
+    default: ''
   - name: repository
     type: string
   - name: imageTag
@@ -30,14 +33,24 @@ steps:
       mkdir -p $(Agent.TempDirectory)/.docker
 
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
+      PASSWORD_TO_USE="${MAPPED_PASSWORD:-}"
+      if [ -z "$PASSWORD_TO_USE" ] && [ -n "${PASSWORD_VAR_NAME:-}" ]; then
+        # Expansion indirecte: récupère la valeur de la variable dont le nom est dans PASSWORD_VAR_NAME
+        PASSWORD_TO_USE="${!PASSWORD_VAR_NAME:-}"
+      fi
+
       if [ -z "${REGISTRY_USER:-}" ] || [ -z "${MAPPED_PASSWORD:-}" ]; then
-        echo "##[error] Identifiants registry manquants (user/password). Impossible de pousser l'image et/ou le cache BuildKit."
-        exit 1
+        # On reteste avec la valeur résolue (paramètre ou variable runtime)
+        if [ -z "${REGISTRY_USER:-}" ] || [ -z "$PASSWORD_TO_USE" ]; then
+          echo "##[error] Identifiants registry manquants (user/password). Impossible de pousser l'image et/ou le cache BuildKit."
+          echo "##[error] Tip: pour AWS/ECR, passe 'registryPasswordVar: SECURE_ECR_TOKEN' au template plutôt que registryPassword: '$(SECURE_ECR_TOKEN)'."
+          exit 1
+        fi
       fi
 
       echo "Login en tant que '$REGISTRY_USER' sur '$REGISTRY_SERVER' (DOCKER_CONFIG isolé)."
 
-      echo "$MAPPED_PASSWORD" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
+      echo "$PASSWORD_TO_USE" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
 
       echo "--- Vérification DOCKER_CONFIG (sans secrets) ---"
       if [ -f "$(Agent.TempDirectory)/.docker/config.json" ]; then
@@ -52,6 +65,7 @@ steps:
       REGISTRY_SERVER: ${{ parameters.registryServer }}
       REGISTRY_USER: ${{ parameters.registryUsername }}
       MAPPED_PASSWORD: ${{ parameters.registryPassword }}
+      PASSWORD_VAR_NAME: ${{ parameters.registryPasswordVar }}
 
   - bash: |
       set -euo pipefail
