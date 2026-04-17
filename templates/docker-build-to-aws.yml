@@ -55,6 +55,6 @@ steps:
       workingDir: ${{ parameters.workingDir }}
       registryServer: ${{ parameters.registryServer }}
       registryUsername: 'AWS'
-      registryPassword: '$(SECURE_ECR_TOKEN)'
+      registryPasswordVar: 'SECURE_ECR_TOKEN'
       repository: ${{ parameters.repository }}
       imageTag: ${{ parameters.imageTag }}
