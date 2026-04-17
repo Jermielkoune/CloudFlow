@@ -29,13 +29,21 @@ steps:
   - bash: |
       set -euo pipefail
       echo "--- Préparation d'un environnement Docker isolé ---"
-      # On crée un dossier propre pour éviter les conflits de credential helpers d'Azure
       mkdir -p $(Agent.TempDirectory)/.docker
+
+      echo "--- Diagnostic des variables (Sécurisé) ---"
+      echo "1. REGISTRY_USER attendu ('AWS') : '${REGISTRY_USER:-}'"
+      echo "2. PASSWORD_VAR_NAME attendu ('SECURE_ECR_TOKEN') : '${PASSWORD_VAR_NAME:-}'"
+      
+      if [ -n "${SECURE_ECR_TOKEN:-}" ]; then 
+        echo "3. SECURE_ECR_TOKEN : [✅ PRÉSENT EN MÉMOIRE]"
+      else 
+        echo "3. SECURE_ECR_TOKEN : [❌ VIDE OU NON TRANSMIS]"
+      fi
 
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
       PASSWORD_TO_USE="${MAPPED_PASSWORD:-}"
       
-      # Correction de la syntaxe Bash : ${VAR} au lieu de $(VAR)
       if [ -z "$PASSWORD_TO_USE" ] && [ "${PASSWORD_VAR_NAME:-}" = "SECURE_ECR_TOKEN" ]; then
         PASSWORD_TO_USE="${SECURE_ECR_TOKEN:-}"
       fi
