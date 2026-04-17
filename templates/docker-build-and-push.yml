@@ -18,21 +18,34 @@ parameters:
   - name: trivyVersion
     type: string
     default: '0.69.3'
+  - name: enableRemoteCache
+    type: string
+    default: 'false'
 
 steps:
   - bash: |
-      set -e
+      set -euo pipefail
       echo "--- Préparation d'un environnement Docker isolé ---"
       # On crée un dossier propre pour éviter les conflits de credential helpers d'Azure
       mkdir -p $(Agent.TempDirectory)/.docker
-      
+
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
-      if [ -z "$REGISTRY_USER" ] || [ -z "$MAPPED_PASSWORD" ]; then
-        echo "Identifiants registry vides : étape de login ignorée."
-        exit 0
+      if [ -z "${REGISTRY_USER:-}" ] || [ -z "${MAPPED_PASSWORD:-}" ]; then
+        echo "##[error] Identifiants registry manquants (user/password). Impossible de pousser l'image et/ou le cache BuildKit."
+        exit 1
       fi
-      
+
+      echo "Login en tant que '$REGISTRY_USER' sur '$REGISTRY_SERVER' (DOCKER_CONFIG isolé)."
+
       echo "$MAPPED_PASSWORD" | docker login "$REGISTRY_SERVER" -u "$REGISTRY_USER" --password-stdin
+
+      echo "--- Vérification DOCKER_CONFIG (sans secrets) ---"
+      if [ -f "$(Agent.TempDirectory)/.docker/config.json" ]; then
+        cat "$(Agent.TempDirectory)/.docker/config.json" | sed 's/"auth"\s*:\s*"[^"]*"/"auth":"***"/g'
+      else
+        echo "##[error] config.json absent dans DOCKER_CONFIG : l'auth docker n'a pas été persistée."
+        exit 1
+      fi
     displayName: 'Login to Container Registry'
     env:
       DOCKER_CONFIG: $(Agent.TempDirectory)/.docker
@@ -41,17 +54,43 @@ steps:
       MAPPED_PASSWORD: ${{ parameters.registryPassword }}
 
   - bash: |
-      set -e
+      set -euo pipefail
+
+      echo "--- Diagnostic Docker (non sensible) ---"
+      docker version
+      docker info | sed -n '1,120p'
+
       echo "--- Initialisation du moteur Docker Buildx ---"
-      docker buildx create --use --driver docker-container
+      BUILDER_NAME="cloudflow"
+
+      # Évite les collisions / builders orphelins entre runs
+      docker buildx rm -f "$BUILDER_NAME" >/dev/null 2>&1 || true
+
+      docker buildx create --name "$BUILDER_NAME" --use --driver docker-container
+      docker buildx inspect --bootstrap
+      docker buildx ls
 
       echo "--- Lancement du Build & Push avec Remote Caching ---"
+      # NOTE: le 401 sur HEAD en ECR arrive quand BuildKit n'a pas les credentials registry.
+      # On garde DOCKER_CONFIG pour que buildx/buildkit utilisent le même contexte auth que 'docker login'.
+
+      CACHE_ARGS=""
+      if [ "${{ parameters.enableRemoteCache }}" = "true" ]; then
+        echo "Remote cache activé : tentative d'accès au manifest ${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache"
+        # Pré-check non bloquant : si le user n'a pas encore créé le tag buildcache, ou si l'import échoue,
+        # on préfère continuer sans cache plutôt que faire tomber le build.
+        docker pull "${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache" >/dev/null 2>&1 || true
+        CACHE_ARGS="--cache-from=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,oci-mediatypes=true --cache-to=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,mode=max,oci-mediatypes=true"
+      else
+        echo "Remote cache désactivé (enableRemoteCache=false)."
+      fi
+
       docker buildx build \
+        --progress=plain \
         --platform linux/amd64 \
         --push \
         --secret id=TOKEN,env=TOKEN \
-        --cache-from=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache \
-        --cache-to=type=registry,ref=${{ parameters.registryServer }}/${{ parameters.repository }}:buildcache,mode=max \
+        $CACHE_ARGS \
         -t "${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}" \
         -f "${{ parameters.workingDir }}/Dockerfile" \
         "${{ parameters.workingDir }}"
@@ -82,4 +121,3 @@ steps:
       docker logout "${{ parameters.registryServer }}"
     displayName: 'Logout from Container Registry'
     condition: always()
-
