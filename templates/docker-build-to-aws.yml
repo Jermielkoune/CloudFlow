@@ -26,6 +26,7 @@ steps:
       aws ecr describe-repositories --region "${{ parameters.awsRegion }}" --repository-names "${{ parameters.repository }}" >/dev/null
       echo "OK: le repo ECR est accessible."
     displayName: 'AWS IAM/ECR Preflight'
+    condition: eq(variables['CLOUD_PROVIDER'], 'AWS')
     env:
       AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
       AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -44,6 +45,7 @@ steps:
 
       echo "##vso[task.setvariable variable=SECURE_ECR_TOKEN;issecret=true]$ECR_TOKEN"
     displayName: 'AWS ECR Token'
+    condition: eq(variables['CLOUD_PROVIDER'], 'AWS')
     env:
       AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
       AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
@@ -52,6 +54,7 @@ steps:
 
   - template: docker-build-and-push.yml
     parameters:
+      condition: eq(variables['CLOUD_PROVIDER'], 'AWS')
       workingDir: ${{ parameters.workingDir }}
       registryServer: ${{ parameters.registryServer }}
       registryUsername: 'AWS'
