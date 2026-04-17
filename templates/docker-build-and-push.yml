@@ -34,19 +34,11 @@ steps:
 
       echo "--- Authentification sur le registre : $REGISTRY_SERVER ---"
       echo "PASSWORD_VAR_NAME='${PASSWORD_VAR_NAME:-}'"
-      if [ -n "${PASSWORD_VAR_NAME:-}" ]; then
-        # Vérifie que la variable d'env existe sans afficher la valeur (elle est masquée si secret)
-        if printenv | grep -q "^${PASSWORD_VAR_NAME}="; then
-          echo "Variable d'environnement '${PASSWORD_VAR_NAME}' présente (valeur masquée)."
-        else
-          echo "##[warning] Variable d'environnement '${PASSWORD_VAR_NAME}' absente."
-        fi
-      fi
-
       PASSWORD_TO_USE="${MAPPED_PASSWORD:-}"
-      if [ -z "$PASSWORD_TO_USE" ] && [ -n "${PASSWORD_VAR_NAME:-}" ]; then
-        # Expansion indirecte: récupère la valeur de la variable dont le nom est dans PASSWORD_VAR_NAME
-        PASSWORD_TO_USE="${!PASSWORD_VAR_NAME:-}"
+      # Azure DevOps: les variables runtime $(VAR) sont substituées avant exécution du script.
+      # Pour éviter l'expansion indirecte bash (${!VAR}) (fragile en pipeline), on mappe explicitement les noms supportés.
+      if [ -z "$PASSWORD_TO_USE" ] && [ "${PASSWORD_VAR_NAME:-}" = "SECURE_ECR_TOKEN" ]; then
+        PASSWORD_TO_USE="$(SECURE_ECR_TOKEN)"
       fi
 
       if [ -z "${REGISTRY_USER:-}" ] || [ -z "${MAPPED_PASSWORD:-}" ]; then
