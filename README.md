@@ -1,26 +1,52 @@
-# 🧩 CloudFlow — Pipeline CI/CD Azure DevOps (Spring Boot / Maven)
+# CloudFlow — Pipeline CI/CD Azure DevOps (Spring Boot / Maven)
 
-## 1) Introduction
-
-**CloudFlow** est un pipeline CI Azure DevOps **modulaire, templaté** et **réutilisable** pour des projets **Java Spring Boot (Maven)**. Il orchestre un dépôt applicatif (ex. GitHub) via `resources.repositories`, puis exécute une chaîne complète de contrôles **qualité**, **tests**, **sécurité (DevSecOps)** et **conteneurisation Docker**.
-
-### Capacités couvertes
-
-- **Toolchain & cache** : installation JDK, cache Maven
-- **Qualité code** : Spotless *(optionnel)*, Checkstyle
-- **Tests** : tests unitaires + rapports JUnit, couverture JaCoCo (artefact)
-- **Inspection** : analyse SonarCloud/SonarQube via Maven + **Quality Gate bloquant**
-- **DevSecOps** : Trivy SAST (vulnérabilités / secrets / misconfig) + publication SARIF
-- **Containerisation** : Docker Buildx + BuildKit + **remote caching** + push registry
-
-> Le pipeline orchestrateur est défini dans `ci-azure-pipelines.yml` et s’appuie sur les templates présents dans `templates/`.
+## Sommaire
+- [1. Introduction et Principes d'Architecture](#1-introduction-et-principes-darchitecture)
+- [2. Déclenchement du Pipeline](#2-déclenchement-du-pipeline)
+- [3. Pré-requis et Informations Projet Client](#3-pré-requis-et-informations-projet-client)
+- [4. Configuration Azure DevOps](#4-configuration-azure-devops)
+- [5. Architecture du Pipeline (Stages & Outils)](#5-architecture-du-pipeline-stages--outils)
+- [6. Containerisation : Push sur Cloud Provider](#6-containerisation--push-sur-cloud-provider)
+- [7. Sécurité, Fail-Fast & Artefacts](#7-sécurité-fail-fast--artefacts)
+- [8. Templates Principaux (Référence)](#8-templates-principaux-référence)
 
 ---
 
-## 2) Pré-requis du projet client
+## 1. Introduction et Principes d'Architecture
 
-### 2.1 Structure minimum attendue (projet applicatif)
+**CloudFlow** est un pipeline CI Azure DevOps modulaire, templaté et réutilisable pour des projets **Java Spring Boot (Maven)**. Il orchestre un dépôt applicatif via `resources.repositories`, puis exécute une chaîne complète de contrôles : qualité, tests, sécurité (DevSecOps) et conteneurisation Docker.
 
+### 1.1 Architecture (3 Acteurs)
+Le système repose sur la collaboration de trois entités :
+1. **Le dépôt CloudFlow (GitHub)** : Contient le pipeline orchestrateur `ci-azure-pipelines.yml` et les templates YAML associés.
+2. **Le dépôt Client (ex. Sikaseal sur GitHub)** : Le projet applicatif à construire et à tester.
+3. **Azure DevOps (Pipelines)** : Héberge la définition logique du pipeline (pointant vers le YAML CI/CD sur GitHub) et exécute les jobs sur des agents Azure.
+
+### 1.2 Principes d'Ingénierie
+- **Agnosticisme Cloud** : Le pipeline est agnostique par rapport au fournisseur cloud. L'architecture met en pratique l'**Inversion de Contrôle (IoC)** et le **Pattern Façade** pour éviter tout couplage fort avec l'infrastructure.
+- **Build Docker Optimisé** : Le pipeline utilise le plugin performant **Buildx** couplé à BuildKit pour gérer nativement la mise en cache distante (remote caching) et l'optimisation des couches Docker.
+
+---
+
+## 2. Déclenchement du Pipeline
+
+Conformément à l'inversion de contrôle, le dépôt CloudFlow agit uniquement en tant que fournisseur de logique applicative :
+- Un `push` ou une *Pull Request* sur le dépôt **CloudFlow** ne déclenche aucune exécution du pipeline.
+- Un `push` sur les branches principales (`main` ou `develop`) dans le dépôt du projet client (**Sikaseal**) déclenche automatiquement l'exécution sur Azure DevOps.
+
+---
+
+## 3. Pré-requis et Informations Projet Client
+
+### 3.1 Règles de Développement (Projet Sikaseal et autres)
+1. **Contrôle Qualité Local** : Il est recommandé de lancer cette ligne de commande avant tout commit pour garantir le respect des normes en vigueur (une non-conformité bloquera la CI) :
+   ```bash
+   ./mvnw spotless:apply checkstyle:check
+   ```
+2. **Gestion de la Version Java** : Le pipeline détecte **automatiquement** la version de Java depuis le fichier `pom.xml`. Pour éviter des builds incohérents, le projet doit définir explicitement cette version via les balises `<maven.compiler.release>` ou `<java.version>`. Si rien n'est spécifié, CloudFlow appliquera le JDK 21 par défaut.
+3. **Vulnérabilités SAST** : Le scanner **Trivy** analyse le code et l'image projet. Les développeurs doivent rester vigilants concernant les dépendances Maven intégrées et les faire évoluer en cas de correctif de sécurité requis.
+
+### 3.2 Structure Minimum Attendue
 ```text
 projet/
 ├── pom.xml
@@ -33,84 +59,66 @@ projet/
     └── test/java/
 ```
 
-### 2.2 Exigences techniques
+### 3.3 Exigences Techniques et Plugins Maven
+- **Java** : Version 21+ (`DETECTED_JDK=21` initialisé par défaut).
+- **Maven** : Wrapper Maven exigé (`./mvnw`).
+- **Spring Boot** : Compatible et recommandé à partir de la version 4.x.
+- **Dockerfile** : Attendu à la racine du projet (`workingDir`).
 
-| Élément |        Requis | Détails |
-|---|--------------:|---|
-| Java |           21+ | Le pipeline est configuré avec une version fixée (`DETECTED_JDK=21` par défaut). |
-| Maven |   via Wrapper | Le pipeline privilégie `./mvnw`. (Sinon fallback `mvn` côté agent.) |
-| Dockerfile |               | Un `Dockerfile` doit être disponible dans le répertoire de travail (`workingDir`). |
-| Spring Boot |               | Compatible Spring Boot 3.x. |
+**Plugins Maven nécessaires / attendus :**
 
-### 2.3 Plugins Maven recommandés / attendus
-
-| Plugin | Statut | Pourquoi |
+| Rôle | Plugin | Statut |
 |---|---|---|
-| `jacoco-maven-plugin` | requis | Couverture pour Azure DevOps + Sonar (rapport `jacoco.xml`). |
-| `maven-checkstyle-plugin` | requis | Règles de style / standards Google. |
-| `sonar-maven-plugin` | requis | Analyse Sonar via Maven Wrapper. |
-| `spotless-maven-plugin` | optionnel | Si présent, le pipeline applique `spotless:check` (sinon étape ignorée). |
+| **Format** | Spotless | **Bloquant** |
+| **Lint/Style** | Checkstyle | **Bloquant** |
+| **Build** | Compiler Plugin | Requis |
+| **Tests** | Surefire | Requis |
+| **Coverage + Rapport** | JaCoCo | Requis |
+| **Artefact Exécutable** | Spring Boot Maven Plugin | Requis (Launcher) |
 
 ---
 
-## 3) Configuration Azure DevOps
+## 4. Configuration Azure DevOps
 
-### 3.1 Variable Group : `cloudflow-global-config`
+### 4.1 Variable Group : `cloudflow-global-config`
+Créez un Variable Group (Library) Azure DevOps nommé par exemple `cloudflow-global-config`.
 
-Créez un variable group **Azure DevOps Library** nommé : **`cloudflow-global-config`**.
+> **Important** : Les variables sensibles (jetons d'accès, mots de passe) doivent impérativement être configurées en tant que **Secret**.
 
-> **Règle d’or** : marquez en **Secret** toutes les variables sensibles (tokens / passwords).
-
-| Variable | Type | Exemple / Attendu | Description |
+| Variable | Type | Exemple | Description |
 |---|---|---|---|
-| `CLOUD_PROVIDER` | Variable | `AZURE` | Routage du stage de containerisation (`AZURE` par défaut). |
-| `GITHUB_TOKEN` | **Secret** | `ghp_***` | Token GitHub pour réduire le rate limiting (Trivy / downloads). |
-| `REGISTRY_SERVER_URL` | Variable | `monacr.azurecr.io` | URL du registry (ACR). |
-| `REGISTRY_REPO_NAME` | Variable | `mon-projet/backend` | Nom du repository dans le registry. |
-| `REGISTRY_USERNAME` | Variable | `xxxxx` | Username registry (ACR). |
-| `REGISTRY_PASSWORD` | **Secret** | `***` | Password registry (ACR). |
-| `SECRET_TOKEN` | **Secret** | `***` | Secret injecté au build Docker (`--secret id=TOKEN`). |
-| `SONAR_HOST_URL` | Variable | `https://sonarcloud.io` | URL SonarCloud/SonarQube. |
-| `SONAR_ORG` | Variable | `my-org` | Organisation SonarCloud. |
-| `SONAR_PROJECT_KEY` | Variable | `my-project-key` | Clé projet Sonar. |
-| `SONAR_TOKEN` | **Secret** | `***` | Token Sonar (auth + quality gate). |
+| `CLOUD_PROVIDER` | Variable | `AZURE` | Routage du stage de containerisation (`AZURE` ou `AWS`). |
+| `GITHUB_TOKEN` | **Secret** | `ghp_***` | Token GitHub pour réduire le rate limiting (téléchargements Trivy). |
+| `REGISTRY_SERVER_URL` | Variable | `monacr.azurecr.io` | URL d'accès complet au registre (ACR/ECR). |
+| `REGISTRY_REPO_NAME` | Variable | `projet/backend` | Nom ciblé du dépôt applicatif dans le registre. |
+| `REGISTRY_USERNAME` | Variable | `user123` | Nom d'utilisateur valide pour s'y connecter. |
+| `REGISTRY_PASSWORD` | **Secret** | `***` | Mot de passe de connexion associé. |
+| `SECRET_TOKEN` | **Secret** | `***` | Secret optionnel injecté au build Docker (`--secret id=TOKEN`). |
+| `SONAR_HOST_URL` | Variable | `https://sonarcloud.io` | Instance cible SonarQube/SonarCloud. |
+| `SONAR_ORG` | Variable | `my-org` | Nom de l'organisation SonarCloud du projet. |
+| `SONAR_PROJECT_KEY` | Variable | `my-project` | Clé désignant le projet Sonar applicatif. |
+| `SONAR_TOKEN` | **Secret** | `***` | Jeton d'authentification pour Sonar. |
 
-> Le pipeline inclut déjà `- group: cloudflow-global-config` dans `ci-azure-pipelines.yml`.
-
-### 3.2 Connexions de service (Service Connections)
-
-| Connexion |        Requis | Pourquoi |
-|---|--------------:|---|
-| GitHub (endpoint) |               | Le pipeline consomme un repo externe via `resources.repositories` (ex: `endpoint: Jermielkoune-github-connexion-auth`). |
-| Azure Container Registry |  recommandé | Possible selon votre politique : ici, le template Azure utilise `docker login` avec user/password. Une service connection reste une bonne pratique. |
+### 4.2 Connexions de Service (Service Connections)
+- **GitHub (Endpoint)** : Requis. Le pipeline Azure DevOps doit pouvoir extraire le code du dépôt externe via l'instruction `resources.repositories` (ex: `endpoint: Jermielkoune-github-connexion-auth`).
 
 ---
 
-## 4) Architecture du pipeline
+## 5. Architecture du Pipeline (Stages & Outils)
 
-Le pipeline est structuré en **5 stages séquentiels** (plus un routage cloud en fin de chaîne).
+Le flux de la logique d'intégration et de déploiement continus est structuré hiérarchiquement en 5 stages :
 
-### 4.1 Diagramme (Mermaid)
+![Architecture du Pipeline CloudFlow](docs/images/architecture-ci.png)
 
-```mermaid
-graph LR
-  A[Setup] --> B[Code Quality]
-  B --> C[Unit Tests]
-  C --> D[Code Inspection - Sonar]
-  D --> E[Containerization]
-```
+| Stage | Rôle | Artefacts / Résultats |
+|---|---|---|
+| **1. Setup** | Cache Maven, configuration JDK, audit `mvnw`. | Environnement applicatif instancié. |
+| **2. Code_Quality** | Lints (Spotless, Checkstyle) et SAST Trivy. | Exécution des contrôles, fichier SARIF exporté. |
+| **3. Unit_Tests** | Lancement des tests. Collecte analytique JaCoCo. | Artefact de build `jacoco-ut`. |
+| **4. Code_Inspection** | Audit SonarCloud, Quality Gate (Validation Metrics). | Synthèse de supervision du projet passée. |
+| **5. Containerization** | Application Buildx, image push et scan des vulnérabilités de l'image. | Image Docker hébergée en toute sécurité. |
 
-### 4.2 Détail des stages
-
-| Stage | Rôle | Templates / tâches clés | Sorties |
-|---|---|---|---|
-| **1. Setup** | Préparation toolchain | `templates/toolchain.yml` (Cache Maven + JDK + audit `mvnw`) | Variable `MAVEN_OPTS` + environnement prêt |
-| **2. Code_Quality** | Lint & sécurité SAST | `templates/quality-check.yml` + `templates/security-sast.yml` | Rapport SARIF Trivy (artefact) |
-| **3. Unit_Tests** | Tests + JaCoCo | `templates/test-unit.yml` + `templates/test-integration-h2.yml` | Artefact `jacoco-ut` |
-| **4. Code_Inspection** | Sonar + Quality Gate | `templates/sonar-scan.yml` + download `jacoco-ut` | Échec si Quality Gate KO |
-| **5. Containerization** | Build/push image + scan image | `templates/docker-build-to-azure.yml` → `docker-build-and-push.yml` | Image poussée + scan Trivy image |
-
-### 4.3 Outils utilisés
+**Outils Utilisés :**
 
 | Domaine | Outil | Usage |
 |---|---|---|
@@ -121,88 +129,61 @@ graph LR
 
 ---
 
-## 5) Déclenchement du pipeline
+## 6. Containerisation : Push sur Cloud Provider
 
-Le pipeline orchestrateur ne se déclenche pas sur son propre dépôt :
+La méthodologie de build CloudFlow est **entièrement agnostique**. Par l'intermédiaire du *Pattern Façade*, toute l'intelligence de la construction (BuildKit, cache distant, paramètres CI) demeure centralisée dans un unique template : `docker-build-and-push.yml`.
 
-- `trigger: none`
-- `pr: none`
+L'aiguillage est effectué via la variable globale `CLOUD_PROVIDER` :
 
-Le déclenchement provient du dépôt applicatif déclaré dans :
+**Variables communes impératives :**
+- `registryServer: '$(REGISTRY_SERVER_URL)'` : Adresse du registre.
+- `registryUsername: '$(REGISTRY_USERNAME)'` : Utilisateur de connexion.
+- `registryPassword: '$(REGISTRY_PASSWORD)'` : Mot de passe de connexion (statique).
+- `repository: '$(REGISTRY_REPO_NAME)'` : Nom complet du répertoire conteneurisé voulu.
 
-- `resources.repositories` (ex: repo `Sikaseal` sur GitHub)
-- filtres de branches et chemins (`src/`, `pom.xml`, etc.)
+### 6.1 Azure ACR (`CLOUD_PROVIDER=AZURE` ou par défaut)
+Le flux technique s'oriente vers la façade `docker-build-to-azure.yml`.
+Il exploite directement les identifiants statiques mis à sa disposition par le *Variable Group* préconfiguré, avant de déléguer la main au build.
 
----
+### 6.2 AWS ECR (`CLOUD_PROVIDER=AWS`)
+Le flux s'oriente vers la façade `docker-build-to-aws.yml`.
+Il gère une authentification éphémère et dynamique à l'aide de l'**AWS CLI** :
+1. Audit du compte IAM par requête (`aws sts get-caller-identity`).
+2. Vérification complète des accès au dépôt applicatif cloud ciblé.
+3. Échanges, création du jeton de session temporaire et délégation d'authentification au template fédérateur.
 
-## 6) Containerization : Azure (stable) vs AWS (à venir)
-
-### 6.1 Azure ACR (stable)
-
-Le routage par défaut utilise :
-
-- `templates/docker-build-to-azure.yml`
-- qui appelle `templates/docker-build-and-push.yml`
-
-Variables nécessaires :
-
-- `REGISTRY_SERVER_URL`
-- `REGISTRY_REPO_NAME`
-- `REGISTRY_USERNAME`
-- `REGISTRY_PASSWORD`
-- `SECRET_TOKEN` *(si utilisé par votre Dockerfile)*
-
-### 6.2 AWS ECR (en cours de refonte 🛠️ — À venir)
-
-Le routage `CLOUD_PROVIDER=AWS` existe déjà dans `ci-azure-pipelines.yml`, mais l’implémentation actuelle basée sur **AWS CLI + token** est en cours de refonte.
-
-**Objectif de la refonte** : utiliser les tâches natives / extension **AWS Toolkit for Azure DevOps**, notamment **`ECRPush`**, via une **AWS Service Connection**, afin de :
-
-- fiabiliser l’authentification (éviter les `401 Unauthorized` / tokens éphémères)
-- standardiser le push ECR
-- éviter la gestion manuelle des credentials dans des scripts
-
-> Statut : **À venir** (work in progress). La version stable actuelle cible Azure ACR.
+**Variables AWS additionnelles (Via environnement Azure DevOps) :**
+- `AWS_ACCESS_KEY_ID` : L'identifiant de la clé d'accès associé à un Utilisateur IAM.
+- `AWS_SECRET_ACCESS_KEY` : La clé secrète attenante (**Secret**).
+- `AWS_REGION` : La région AWS (ex: `us-east-1`).
 
 ---
 
-## 7) Sécurité, Fail-Fast & artefacts
+## 7. Sécurité, Fail-Fast & Artefacts
 
-### 7.1 Politique Fail-Fast (bloquante)
+### 7.1 Normes Bloquantes (Fail-Fast)
+Afin de prévenir toute déploiement endommagé, CloudFlow interrompra automatiquement le Build dans les contextes suivants :
+- **Checkstyle** : Existence attestée d'une mauvaise pratique de style (`violations`).
+- **Spotless** : Mauvais formatage (si le plugin est identifié dans le projet client).
+- **Trivy SAST / Image** : Révélation d'au moins une vulnérabilité reconnue comme de criticité **CRITICAL** ou **HIGH** (Rend un exit-code 1).
+- **SonarQube** : Le *Quality Gate* du projet n'est pas franchi et échoue (`sonar.qualitygate.wait=true`).
 
-| Contrôle | Comportement |
+### 7.2 Post-Traitement des Artefacts
+- **SARIF** : Création autonome de l'historique d'analyse statique du code `trivy-report.sarif`, destiné aux agrégateurs DevSecOps d'Azure DevOps.
+- **JaCoCo** : Agrégation et mise à disposition des rapports XML multi-modules standardisés (`**/target/site/jacoco/jacoco.xml`).
+
+---
+
+## 8. Templates Principaux (Référence)
+
+| Template Modulaire | Objectif |
 |---|---|
-| Trivy SAST (`templates/security-sast.yml`) | Échec du job si vulnérabilités / findings **CRITICAL,HIGH** (exit code 1). |
-| Sonar (`templates/sonar-scan.yml`) | Échec si le **Quality Gate** ne passe pas (`sonar.qualitygate.wait=true`). |
-| Checkstyle | Échec si violations de règles. |
-| Spotless | Échec **uniquement si le plugin est présent** (sinon étape ignorée). |
-
-### 7.2 Artefacts publiés
-
-| Artefact | Produit par | Contenu |
-|---|---|---|
-| `jacoco-ut` | `templates/test-unit.yml` | Rapports `**/target/site/jacoco/jacoco.xml` (multi-modules support). |
-| `CodeAnalysisLogs` | `templates/security-sast.yml` | `trivy-report.sarif` (importable dans des outils SARIF). |
-
----
-
-## 8) Templates principaux (référence)
-
-| Template | Rôle |
-|---|---|
-| `templates/toolchain.yml` | Cache Maven + JDK + audit wrapper |
-| `templates/quality-check.yml` | Spotless (optionnel) + Checkstyle |
-| `templates/security-sast.yml` | Trivy `fs` + SARIF + quality gate sur sévérité |
-| `templates/test-unit.yml` | Tests unitaires + JaCoCo + artefact |
-| `templates/test-integration-h2.yml` | Tests d’intégration (profil `test`, H2) |
-| `templates/sonar-scan.yml` | Scan Sonar + attente du Quality Gate |
-| `templates/docker-build-to-azure.yml` | Wrapper Azure vers build/push |
-| `templates/docker-build-and-push.yml` | Login + Buildx remote cache + scan image Trivy |
-
----
-
-### Annexes
-
-- 📄 Pipeline orchestrateur : `ci-azure-pipelines.yml`
-- 📁 Templates : `templates/`
-
+| `toolchain.yml` | Paramètres fondamentaux environnementaux (Cache `.m2`, JDK). |
+| `quality-check.yml` | Contrôles drastiques (Spotless et Checkstyle). |
+| `security-sast.yml` | Détection exhaustive du file-system (Trivy) et exports log SARIF. |
+| `test-unit.yml` | Exécution des TU et collecte algorithmique de couverture de code (JaCoCo). |
+| `test-integration-h2.yml` | Exécution des tests de la configuration d'intégration par profil en DB embarquée (H2). |
+| `sonar-scan.yml` | Transferts des calculs vers SonarQube et écoute du comportement Quality Gate. |
+| `docker-build-to-azure.yml`| Façade vers les méthodes de conteneurisation Azure ACR. |
+| `docker-build-to-aws.yml` | Façade de connexion et gestion des identités IAM vers AWS ECR. |
+| `docker-build-and-push.yml`| Moteur central Buildx (Push, Cache ECR/ACR, Trivy Image Scanner). |
