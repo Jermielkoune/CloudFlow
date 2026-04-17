@@ -24,6 +24,9 @@ parameters:
   - name: enableRemoteCache
     type: string
     default: 'false'
+  - name: condition
+    type: string
+    default: 'succeeded()'
 
 steps:
   - bash: |
@@ -64,6 +67,7 @@ steps:
         exit 1
       fi
     displayName: 'Login to Container Registry'
+    condition: ${{ parameters.condition }}
     env:
       DOCKER_CONFIG: $(Agent.TempDirectory)/.docker
       REGISTRY_SERVER: ${{ parameters.registryServer }}
@@ -110,6 +114,7 @@ steps:
         -f "${{ parameters.workingDir }}/Dockerfile" \
         "${{ parameters.workingDir }}"
     displayName: 'Build & Push with BuildKit Remote Cache'
+    condition: ${{ parameters.condition }}
     env:
       TOKEN: $(SECRET_TOKEN)
       DOCKER_CONFIG: $(Agent.TempDirectory)/.docker
@@ -134,6 +139,7 @@ steps:
         --ignore-unfixed \
         "${{ parameters.registryServer }}/${{ parameters.repository }}:${{ parameters.imageTag }}"
     displayName: 'Security Scan: Image Vulnerabilities'
+    condition: ${{ parameters.condition }}
     env:
       TRIVY_USERNAME: ${{ parameters.registryUsername }}
       MAPPED_PASSWORD: ${{ parameters.registryPassword }}
@@ -143,4 +149,4 @@ steps:
       echo "--- Déconnexion du registre : ${{ parameters.registryServer }} ---"
       docker logout "${{ parameters.registryServer }}"
     displayName: 'Logout from Container Registry'
-    condition: always()
+    condition: and(always(), ${{ parameters.condition }})
