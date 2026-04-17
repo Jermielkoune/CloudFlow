@@ -201,23 +201,22 @@ stages:
             path: s/$(CODE_SOURCE_DIR)
 
           # --- Cas AWS : Utilise le wrapper pour l'authentification éphémère ---
-          - ${{ if eq(variables.CLOUD_PROVIDER, 'AWS') }}:
-            - template: templates/docker-build-to-aws.yml
-              parameters:
-                workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
-                registryServer: '$(REGISTRY_SERVER_URL)'
-                repository: '$(REGISTRY_REPO_NAME)'
-                imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
-                awsRegion: '$(AWS_REGION)'
+          - template: templates/docker-build-to-aws.yml
+            parameters:
+              workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
+              registryServer: '$(REGISTRY_SERVER_URL)'
+              repository: '$(REGISTRY_REPO_NAME)'
+              imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+              awsRegion: '$(AWS_REGION)'
 
           # --- Cas AZURE (ou par défaut) : Utilise le wrapper avec identifiants statiques ---
-          - ${{ if ne(variables.CLOUD_PROVIDER, 'AWS') }}:
-            - template: templates/docker-build-to-azure.yml
-              parameters:
+          - template: templates/docker-build-to-azure.yml
+            parameters:
                 workingDir: '$(Pipeline.Workspace)/s/$(CODE_SOURCE_DIR)'
                 registryServer: '$(REGISTRY_SERVER_URL)'
                 registryUsername: '$(REGISTRY_USERNAME)'
                 registryPassword: '$(REGISTRY_PASSWORD)'
                 repository: '$(REGISTRY_REPO_NAME)'
                 imageTag: '$(Build.SourceBranchName)-$(Build.BuildId)'
+
 
